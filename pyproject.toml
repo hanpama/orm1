@@ -1,0 +1,27 @@
+[project]
+name = 'orm1'
+version = '0.1.0-alpha1'
+dependencies = ['asyncpg==0.29.0']
+authors = [{ name = "Kyungil Choi", email = "hanpama@gmail.com" }]
+description = "Object-relational mapping library for PostgreSQL"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/hanpama/orm1"
+Issues = "https://github.com/hanpama/orm1/issues"
+
+[tool.setuptools]
+py-modules = []
+
+[tool.pyright]
+include = ["orm1", "tests"]
+pythonVersion = "3.12"
+
+[tool.black]
+line-length = 120
