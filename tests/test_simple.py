@@ -8,166 +8,233 @@ import asyncpg
 from orm1 import Session, SessionBackend
 
 from . import database as _
-from .entities.purchase import Purchase, PurchaseBankTransfer, PurchaseBankTransferAttachment, PurchaseCouponUsage, PurchaseLineItem
+from .entities.purchase import (
+    Purchase,
+    PurchaseBankTransfer,
+    PurchaseBankTransferAttachment,
+    PurchaseCouponUsage,
+    PurchaseLineItem,
+)
 
 
 class SimpleTest(IsolatedAsyncioTestCase):
 
-    def _create_purchase(self):
-        return Purchase(
-            code="CP-00032",
-            user_id=UUID("50dc79f1-06d7-44d3-b1d4-e8db7d982a59"),
-            line_items=[
-                PurchaseLineItem(
-                    product_id=UUID("853868c7-570c-4e65-8d6d-ebeb185e4eb7"),
-                    quantity=8,
-                ),
-                PurchaseLineItem(
-                    product_id=UUID("e57b3a2d-037d-49e7-a5bf-d76977dcc625"),
-                    quantity=2,
-                ),
-            ],
-            bank_transfers=[
-                PurchaseBankTransfer(
-                    sender_name="John Doe",
-                    transfer_time=datetime.fromisoformat("2021-08-01T12:00:00"),
-                    amount=Decimal(100.0),
-                    attachments=[
-                        PurchaseBankTransferAttachment(
-                            media_uri="https://example.com/attachment1.jpg",
-                        ),
-                        PurchaseBankTransferAttachment(
-                            media_uri="https://example.com/attachment2.jpg",
-                        ),
-                    ],
-                ),
-            ],
-            coupon_usage=PurchaseCouponUsage(
-                coupon_id=UUID("b8c8c6c5-4f8e-4c4b-8f9d-1d7d2a8e5a0a"),
+    purchase1 = Purchase(
+        code="CP-00032",
+        user_id=UUID("50dc79f1-06d7-44d3-b1d4-e8db7d982a59"),
+        line_items=[
+            PurchaseLineItem(
+                product_id=UUID("853868c7-570c-4e65-8d6d-ebeb185e4eb7"),
+                quantity=8,
             ),
-        )
+            PurchaseLineItem(
+                product_id=UUID("e57b3a2d-037d-49e7-a5bf-d76977dcc625"),
+                quantity=2,
+            ),
+        ],
+        bank_transfers=[
+            PurchaseBankTransfer(
+                sender_name="John Doe",
+                transfer_time=datetime.fromisoformat("2021-08-01T12:00:00"),
+                amount=Decimal(100.0),
+                attachments=[
+                    PurchaseBankTransferAttachment(
+                        media_uri="https://example.com/attachment1.jpg",
+                    ),
+                    PurchaseBankTransferAttachment(
+                        media_uri="https://example.com/attachment2.jpg",
+                    ),
+                ],
+            ),
+        ],
+        coupon_usage=PurchaseCouponUsage(
+            coupon_id=UUID("b8c8c6c5-4f8e-4c4b-8f9d-1d7d2a8e5a0a"),
+        ),
+    )
 
-    purchase: Purchase
+    purchase2 = Purchase(
+        code="CP-00100",
+        user_id=UUID("50dc79f1-06d7-44d3-b1d4-e8db7d982a59"),
+        line_items=[
+            PurchaseLineItem(
+                product_id=UUID("853868c7-570c-4e65-8d6d-ebeb185e4eb7"),
+                quantity=7,
+            ),
+        ],
+        bank_transfers=[
+            PurchaseBankTransfer(
+                sender_name="John Doe",
+                transfer_time=datetime.fromisoformat("2021-08-01T12:00:00"),
+                amount=Decimal(40.0),
+                attachments=[
+                    PurchaseBankTransferAttachment(
+                        media_uri="https://example.com/attachment1.jpg",
+                    ),
+                ],
+            ),
+        ],
+        coupon_usage=PurchaseCouponUsage(
+            coupon_id=UUID("9ea9fea6-2c10-4a8c-87d2-425c5dcfd671"),
+        ),
+    )
+
+    purchase3 = Purchase(
+        code="CP-00120",
+        user_id=UUID("50dc79f1-06d7-44d3-b1d4-e8db7d982a59"),
+        line_items=[
+            PurchaseLineItem(
+                product_id=UUID("e57b3a2d-037d-49e7-a5bf-d76977dcc625"),
+                quantity=2,
+            ),
+        ],
+        bank_transfers=[
+            PurchaseBankTransfer(
+                sender_name="John Doe",
+                transfer_time=datetime.fromisoformat("2021-08-01T12:00:00"),
+                amount=Decimal(129.99),
+                attachments=[],
+            ),
+        ],
+    )
+
+    purchase4 = Purchase(
+        code="CP-00121",
+        user_id=UUID("d319dd20-8622-4602-bb4e-eed7cc80bef1"),
+        line_items=[
+            PurchaseLineItem(
+                product_id=UUID("e57b3a2d-037d-49e7-a5bf-d76977dcc625"),
+                quantity=2,
+            ),
+        ],
+        bank_transfers=[
+            PurchaseBankTransfer(
+                sender_name="John Doe",
+                transfer_time=datetime.fromisoformat("2021-08-01T12:00:00"),
+                amount=Decimal(129.99),
+                attachments=[],
+            ),
+        ],
+    )
 
     async def test_update_root_scalar(self):
         s1 = self._session()
-        p1 = await s1.get(Purchase, self.purchase.id)
+        p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.code = "CP-00033"
         await s1.save(p1)
 
         s2 = self._session()
-        p2 = await s2.get(Purchase, self.purchase.id)
+        p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert p2.code == "CP-00033"
 
     async def test_set_null_root_scalar(self):
         s1 = self._session()
-        p1 = await s1.get(Purchase, self.purchase.id)
+        p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.user_id = None
         await s1.save(p1)
 
         s2 = self._session()
-        p2 = await s2.get(Purchase, self.purchase.id)
+        p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert p2.user_id is None
 
     async def test_delete_root(self):
         s1 = self._session()
-        p1 = await s1.get(Purchase, self.purchase.id)
+        p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         await s1.delete(p1)
 
         s2 = self._session()
-        p2 = await s2.get(Purchase, self.purchase.id)
+        p2 = await s2.get(Purchase, self.purchase1.id)
         assert not p2
 
     async def test_plural_append(self):
         s1 = self._session()
-        p1 = await s1.get(Purchase, self.purchase.id)
+        p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.line_items.append(PurchaseLineItem(product_id=UUID("853868c7-570c-4e65-8d6d-ebeb185e4eb7"), quantity=3))
         await s1.save(p1)
 
         s2 = self._session()
-        p2 = await s2.get(Purchase, self.purchase.id)
+        p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert len(p2.line_items) == 3
 
     async def test_plural_scalar_update(self):
         s1 = self._session()
-        p1 = await s1.get(Purchase, self.purchase.id)
+        p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.line_items[0].quantity = 10
         await s1.save(p1)
 
         s2 = self._session()
-        p2 = await s2.get(Purchase, self.purchase.id)
+        p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert p2.line_items[0].quantity == 10
 
     async def test_plural_delete(self):
         s1 = self._session()
-        p1 = await s1.get(Purchase, self.purchase.id)
+        p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         del p1.line_items[0]
         await s1.save(p1)
 
         s2 = self._session()
-        p2 = await s2.get(Purchase, self.purchase.id)
+        p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert len(p2.line_items) == 1
 
     async def test_plural_null(self):
         s1 = self._session()
-        p1 = await s1.get(Purchase, self.purchase.id)
+        p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         setattr(p1, "line_items", None)  # p1.line_items = None
         await s1.save(p1)
 
         s2 = self._session()
-        p2 = await s2.get(Purchase, self.purchase.id)
+        p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert p2.line_items == []
 
     async def test_singular_set(self):
         s1 = self._session()
-        p1 = await s1.get(Purchase, self.purchase.id)
+        p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.coupon_usage = PurchaseCouponUsage(coupon_id=UUID("f5d8b5ea-c7cb-407d-9595-273eb1a87a6b"))
         await s1.save(p1)
 
         s2 = self._session()
-        p2 = await s2.get(Purchase, self.purchase.id)
+        p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert p2.coupon_usage
         assert p2.coupon_usage.coupon_id == UUID("f5d8b5ea-c7cb-407d-9595-273eb1a87a6b")
 
     async def test_singular_delete(self):
         s1 = self._session()
-        p1 = await s1.get(Purchase, self.purchase.id)
+        p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.coupon_usage = None
         await s1.save(p1)
 
         s2 = self._session()
-        p2 = await s2.get(Purchase, self.purchase.id)
+        p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert not p2.coupon_usage
 
     async def test_nested_complex_update(self):
         s1 = self._session()
-        p1 = await s1.get(Purchase, self.purchase.id)
+        p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         # root scalar update
@@ -222,59 +289,177 @@ class SimpleTest(IsolatedAsyncioTestCase):
         await s1.save(p1)
 
         s2 = self._session()
-        p2 = await s2.get(Purchase, self.purchase.id)
+        p2 = await s2.get(Purchase, self.purchase1.id)
 
         assert p2
         assert p1 is not p2
         assert p1 == p2
 
-    async def test_find(self):
-        s = self._session()
-        query = (
-            s.find(Purchase, "p")
-            .where(
-                "p.code = :code",
-                code="CP-00032",
-            )
-            .offset(0)
-            .limit(10)
-            .order_by("p.id DESC")
-        )
-        results = await query.fetch()
-        assert len(results) == 1
-
-    async def test_select(self):
-        s = self._session()
-        query = (
-            s.select("id")
-            .from_("purchase AS p")
-            .where(
-                "p.code = :code",
-                code="CP-00032",
-            )
-            .offset(0)
-            .limit(10)
-            .order_by("p.id DESC")
-        )
-
-        results = await query.fetch()
-        assert len(results) == 1
-
     async def test_raw(self):
         s = self._session()
         query = s.raw(
             """
-            SELECT *, created_at::TIMESTAMPTZ FROM purchase AS p
+            SELECT 'this is :string' as "a:a", created_at::TIMESTAMPTZ
+            FROM purchase AS p
             WHERE p.code = :code
             ORDER BY p.id DESC
             OFFSET 0
-            LIMIT 10
+            LIMIT 10;
             """,
             code="CP-00032",
         )
 
         results = await query.fetch()
+
         assert len(results) == 1
+        assert results[0]["a:a"] == "this is :string"
+        assert results[0]["created_at"]
+
+    async def test_root_find_forward(self):
+        s = self._session()
+        query = s.find(Purchase, "p").filter(
+            "p.user_id = :value",
+            value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
+        )
+        results = await query.fetch(
+            first=2,
+            sort=[
+                query.desc("p.code"),
+                query.asc("p.id"),
+            ],
+        )
+
+        assert len(results) == 2
+
+        assert results[0].code == self.purchase3.code
+        assert results[1].code == self.purchase2.code
+        assert results.has_previous_page is False
+        assert results.has_next_page is True
+
+        results = await query.fetch(
+            first=2,
+            sort=[
+                query.desc("p.code"),
+                query.asc("p.id"),
+            ],
+            after=results.end_cursor,
+        )
+
+        assert len(results) == 1
+        assert results[0].code == self.purchase1.code
+        assert results.has_previous_page is True
+        assert results.has_next_page is False
+
+        results = await query.fetch(
+            first=3,
+            sort=[
+                query.desc("p.code"),
+                query.asc("p.id"),
+            ],
+        )
+
+        assert len(results) == 3
+        assert results[0].code == self.purchase3.code
+        assert results[1].code == self.purchase2.code
+        assert results[2].code == self.purchase1.code
+        assert results.has_previous_page is False
+        assert results.has_next_page is False
+
+    async def test_root_find_backward(self):
+        s = self._session()
+        query = s.find(Purchase, "p").filter(
+            "p.user_id = :value",
+            value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
+        )
+        results = await query.fetch(
+            last=2,
+            sort=[
+                query.asc("p.code"),
+                query.asc("p.id"),
+            ],
+        )
+        assert len(results) == 2
+
+        assert results[0].code == self.purchase2.code
+        assert results[1].code == self.purchase3.code
+
+        assert results.has_previous_page is True
+        assert results.has_next_page is False
+
+        results = await query.fetch(
+            last=2,
+            sort=[
+                query.asc("p.code"),
+                query.asc("p.id"),
+            ],
+            before=results.start_cursor,
+        )
+
+        assert len(results) == 1
+        assert results[0].code == self.purchase1.code
+        assert results.has_previous_page is False
+        assert results.has_next_page is True
+
+        results = await query.fetch(
+            last=3,
+            sort=[
+                query.asc("p.code"),
+                query.asc("p.id"),
+            ],
+        )
+
+        assert len(results) == 3
+        assert results[0].code == self.purchase1.code
+        assert results[1].code == self.purchase2.code
+        assert results[2].code == self.purchase3.code
+
+        assert results.has_previous_page is False
+        assert results.has_next_page is False
+
+    async def test_joined_find_forward(self):
+        s = self._session()
+        query = (
+            s.find(Purchase, "p")
+            .filter(
+                "p.user_id = :value",
+                value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
+            )
+            .join(
+                PurchaseLineItem,
+                "pl",
+                "p.id = pl.purchase_id",
+            )
+            .filter(
+                "pl.product_id = :value",
+                value="853868c7-570c-4e65-8d6d-ebeb185e4eb7",
+            )
+        )
+        results = await query.fetch(
+            first=1,
+            sort=[
+                query.desc("MAX(pl.quantity)"),
+                query.desc("p.id"),
+            ],
+        )
+
+        assert len(results) == 1
+        assert results[0].code == self.purchase1.code
+        assert results.has_previous_page is False
+        assert results.has_next_page is True
+
+        results = await query.fetch(
+            first=1,
+            sort=[
+                query.desc("MAX(pl.quantity)"),
+                query.desc("p.id"),
+            ],
+            after=results.end_cursor,
+        )
+
+        assert len(results) == 1
+        assert results[0].code == self.purchase2.code
+        assert results.has_previous_page is True
+        assert results.has_next_page is False
 
     async def asyncSetUp(self) -> None:
         self._conn: asyncpg.Connection = await asyncpg.connect(self.dsn)
@@ -284,9 +469,9 @@ class SimpleTest(IsolatedAsyncioTestCase):
         session = Session(self._backend)
 
         await self._tx.start()
-
-        self.purchase = self._create_purchase()
-        await session.save(self.purchase)
+        await session.save(self.purchase1)
+        await session.save(self.purchase2)
+        await session.save(self.purchase3)
 
         return await super().asyncSetUp()
 

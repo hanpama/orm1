@@ -65,7 +65,6 @@ class EntityChildDefinition(typing.NamedTuple):
 
 
 def _build_definitions():
-
     entities = dict[type, EntityDefinition]()
 
     for cls, opts in definition_registry.items():
