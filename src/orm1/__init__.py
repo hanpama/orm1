@@ -68,11 +68,11 @@ class SQLVar:
         yield self
 
     def typed(self, type: str):
-        return SQLFragment((self, SQLText("::"), SQLText(type)))
+        return SQLCode((self, SQLText("::"), SQLText(type)))
 
 
-class SQLFragment:
-    def __init__(self, elements: Collection["SQLFragment | SQLText | SQLVar"]):
+class SQLCode:
+    def __init__(self, elements: Collection["SQLCode | SQLText | SQLVar"]):
         self._elements = elements
 
     def __iter__(self):
@@ -105,7 +105,7 @@ class SQLFragment:
             else:
                 tokens.append(SQLText(word))
 
-        return SQLFragment(tokens)
+        return SQLCode(tokens)
 
     def build_sql(self) -> tuple[str, list]:
         strings = []
@@ -126,43 +126,53 @@ class SQLFragment:
 
         return "".join(strings), params
 
-    def alias(self, alias: str):
-        return SQLFragment.concat(self, SQLText("AS"), SQLText.quote(alias))
+    def alias(self, alias: str, columns: "Iterable[str]" = ()):
+        if columns:
+            alias_expr = SQLCode(
+                (
+                    SQLText.quote(alias),
+                    SQLCode.paren(SQLCode.list(SQLText.quote(c) for c in columns)),
+                ),
+            )
+        else:
+            alias_expr = SQLText.quote(alias)
+
+        return SQLCode.concat(self, SQLText("AS"), alias_expr)
 
     @classmethod
     def qn(cls, prefix: str, name: str):
-        return SQLFragment((SQLText.quote(prefix), SQLText.dot, SQLText.quote(name)))
+        return SQLCode((SQLText.quote(prefix), SQLText.dot, SQLText.quote(name)))
 
     @classmethod
-    def join(cls, sep: SQLText, fragments: "Iterable[SQLFragment | SQLText | SQLVar]"):
-        elements = list[SQLFragment | SQLText | SQLVar]()
+    def join(cls, sep: SQLText, fragments: "Iterable[SQLCode | SQLText | SQLVar]"):
+        elements = list[SQLCode | SQLText | SQLVar]()
         for i, f in enumerate(fragments):
             if i:
                 elements.append(sep)
             elements.append(f)
-        return SQLFragment(elements)
+        return SQLCode(elements)
 
     @classmethod
-    def list(cls, fragments: "Iterable[SQLFragment | SQLText | SQLVar]"):
-        return SQLFragment.join(SQLText.comma, fragments)
+    def list(cls, fragments: "Iterable[SQLCode | SQLText | SQLVar]"):
+        return SQLCode.join(SQLText.comma, fragments)
 
     @classmethod
-    def variadic(cls, fragments: "Sequence[SQLFragment | SQLText | SQLVar]"):
+    def variadic(cls, fragments: "Sequence[SQLCode | SQLText | SQLVar]"):
         if len(fragments) == 1:
             return fragments[0]
-        return SQLFragment.paren(SQLFragment.list(fragments))
+        return SQLCode.paren(SQLCode.list(fragments))
 
     @classmethod
-    def concat(cls, *fragments: "SQLFragment | SQLText | SQLVar"):
-        return SQLFragment.join(SQLText.space, fragments)
+    def concat(cls, *fragments: "SQLCode | SQLText | SQLVar"):
+        return SQLCode.join(SQLText.space, fragments)
 
     @classmethod
-    def paren(cls, fragment: "SQLFragment | SQLText | SQLVar"):
-        return SQLFragment((SQLText.lparen, fragment, SQLText.rparen))
+    def paren(cls, fragment: "SQLCode | SQLText | SQLVar"):
+        return SQLCode((SQLText.lparen, fragment, SQLText.rparen))
 
     @classmethod
-    def func_call(cls, name: str, args: "Iterable[SQLFragment | SQLText | SQLVar]"):
-        return SQLFragment((SQLText(name), SQLText.lparen, SQLFragment.join(SQLText.comma, args), SQLText.rparen))
+    def func_call(cls, name: str, args: "Iterable[SQLCode | SQLText | SQLVar]"):
+        return SQLCode((SQLText(name), SQLText.lparen, SQLCode.join(SQLText.comma, args), SQLText.rparen))
 
 
 class SelectOperation(typing.NamedTuple):
@@ -254,7 +264,7 @@ class CompositeKey(Key):
     def to_partial(self, value: KeyValue) -> Rec:
         assert isinstance(value, tuple)
         partial = {}
-        for field, val in zip(self.fields, value):
+        for field, val in zip(self.fields, value or ()):
             partial.update(field.to_partial(val))
         return partial
 
@@ -402,20 +412,15 @@ class SessionBackend:
         if not op.values:
             return []
 
-        frag = SQLFragment.concat(
+        frag = SQLCode.concat(
             SQLText("SELECT"),
-            SQLFragment.list(SQLFragment.qn("t", col.name) for col in op.select),
+            SQLCode.list(SQLCode.qn("t", col.name) for col in op.select),
             SQLText("FROM"),
-            SQLFragment.qn(op.table._schema, op.table._name),
-            SQLText("t"),
+            SQLCode.qn(op.table._schema, op.table._name).alias("t"),
             SQLText("JOIN"),
-            SQLFragment.func_call(
-                "UNNEST",
-                (SQLVar([rec[c] for rec in op.values], type=c.type + "[]") for c in op.where),
-            ),
-            SQLFragment.func_call("v", (SQLText.quote(c.name) for c in op.where)),
+            self._ucv(op.where, op.values).alias("v", (c.name for c in op.where)),
             SQLText("USING"),
-            SQLFragment.paren(SQLFragment.list(SQLText.quote(c.name) for c in op.where)),
+            SQLCode.paren(SQLCode.list(SQLText.quote(c.name) for c in op.where)),
         )
         records = await self.fetch(*frag.build_sql())
         return [dict(zip(op.select, record)) for record in records]
@@ -424,25 +429,21 @@ class SessionBackend:
         if not op.values:
             return []
 
-        frag = SQLFragment.concat(
+        frag = SQLCode.concat(
             SQLText("INSERT INTO"),
-            SQLFragment.qn(op.table._schema, op.table._name),
-            SQLText("AS t"),
-            SQLFragment.paren(SQLFragment.list(SQLText.quote(c.name) for c in op.insert_cols)),
+            SQLCode.qn(op.table._schema, op.table._name).alias("t"),
+            SQLCode.paren(SQLCode.list(SQLText.quote(c.name) for c in op.insert_cols)),
             SQLText("SELECT"),
-            SQLFragment.list(
-                SQLFragment.func_call("COALESCE", (SQLFragment.qn("v", c.name), SQLText(c.default or "NULL")))
+            SQLCode.list(
+                SQLCode.func_call("COALESCE", (SQLCode.qn("v", c.name), SQLText(c.default or "NULL")))
                 for c in op.insert_cols
             ),
             SQLText("FROM"),
-            SQLFragment.func_call(
-                "UNNEST",
-                (SQLVar([rec[c] for rec in op.values], type=c.type + "[]") for c in op.insert_cols),
-            ),
-            SQLFragment.func_call("v", (SQLText.quote(c.name) for c in op.insert_cols)),
+            self._ucv(op.insert_cols, op.values).alias("v", (c.name for c in op.insert_cols)),
             SQLText("RETURNING"),
-            SQLFragment.list(SQLFragment.qn("t", c.name) for c in op.returning_cols),
+            SQLCode.list(SQLCode.qn("t", c.name) for c in op.returning_cols),
         )
+
         records = await self.fetch(*frag.build_sql())
         return [dict(zip(op.returning_cols, record)) for record in records]
 
@@ -450,30 +451,25 @@ class SessionBackend:
         if not op.values:
             return []
         all_columns = [*op.where_cols, *op.update_cols]
-        frag = SQLFragment.concat(
+        frag = SQLCode.concat(
             SQLText("UPDATE"),
-            SQLFragment.qn(op.table._schema, op.table._name),
-            SQLText("t"),
+            SQLCode.qn(op.table._schema, op.table._name).alias("t"),
             SQLText("SET"),
-            SQLFragment.concat(
-                SQLFragment.variadic([SQLText.quote(c.name) for c in op.update_cols]),
+            SQLCode.concat(
+                SQLCode.variadic([SQLText.quote(c.name) for c in op.update_cols]),
                 SQLText("="),
-                SQLFragment.variadic([SQLFragment.qn("v", c.name) for c in op.update_cols]),
+                SQLCode.variadic([SQLCode.qn("v", c.name) for c in op.update_cols]),
             ),
             SQLText("FROM"),
-            SQLFragment.func_call(
-                "UNNEST",
-                (SQLVar([rec[c] for rec in op.values], type=c.type + "[]") for c in all_columns),
-            ),
-            SQLFragment.func_call("v", (SQLText.quote(c.name) for c in all_columns)),
+            self._ucv(all_columns, op.values).alias("v", (c.name for c in all_columns)),
             SQLText("WHERE"),
-            SQLFragment.concat(
-                SQLFragment.variadic([SQLFragment.qn("t", c.name) for c in op.where_cols]),
+            SQLCode.concat(
+                SQLCode.variadic([SQLCode.qn("t", c.name) for c in op.where_cols]),
                 SQLText("="),
-                SQLFragment.variadic([SQLFragment.qn("v", c.name) for c in op.where_cols]),
+                SQLCode.variadic([SQLCode.qn("v", c.name) for c in op.where_cols]),
             ),
             SQLText("RETURNING"),
-            SQLFragment.list(SQLFragment.qn("t", c.name) for c in op.returning_cols),
+            SQLCode.list(SQLCode.qn("t", c.name) for c in op.returning_cols),
         )
 
         records = await self.fetch(*frag.build_sql())
@@ -483,21 +479,16 @@ class SessionBackend:
         if not op.values:
             return []
 
-        frag = SQLFragment.concat(
+        frag = SQLCode.concat(
             SQLText("DELETE FROM"),
-            SQLFragment.qn(op.table._schema, op.table._name),
-            SQLText("t"),
+            SQLCode.qn(op.table._schema, op.table._name).alias("t"),
             SQLText("USING"),
-            SQLFragment.func_call(
-                "UNNEST",
-                (SQLVar([rec[c] for rec in op.values], type=c.type + "[]") for c in op.key_cols),
-            ),
-            SQLFragment.func_call("v", (SQLText.quote(c.name) for c in op.key_cols)),
+            self._ucv(op.key_cols, op.values).alias("v", (c.name for c in op.key_cols)),
             SQLText("WHERE"),
-            SQLFragment.concat(
-                SQLFragment.variadic([SQLFragment.qn("t", c.name) for c in op.key_cols]),
+            SQLCode.concat(
+                SQLCode.variadic([SQLCode.qn("t", c.name) for c in op.key_cols]),
                 SQLText("="),
-                SQLFragment.variadic([SQLFragment.qn("v", c.name) for c in op.key_cols]),
+                SQLCode.variadic([SQLCode.qn("v", c.name) for c in op.key_cols]),
             ),
         )
 
@@ -505,6 +496,12 @@ class SessionBackend:
 
     async def fetch(self, query: str, params: Sequence[PostgresCodable]) -> list[typing.Mapping[str, PostgresCodable]]:
         return await self._conn.fetch(query, *params)
+
+    def _ucv(self, columns: Sequence[Column], values: Sequence[Rec]):
+        return SQLCode.func_call(
+            "UNNEST",
+            (SQLVar([rec[c] for rec in values], type=c.type + "[]") for c in columns),
+        )
 
 
 entity_mapping_registry: dict[type, EntityMapping] = {}
@@ -561,9 +558,6 @@ class Session:
         ids = [mapping.identify_entity(ent) for ent in entities]
         await self._delete_by_key(mapping, mapping.primary_key, ids)
         self._untrack(mapping, ids)
-
-    # def select(self, *columns: str):
-    #     return SessionBoundSelectQuery(self, columns)
 
     def find(self, entity_type: Type[TEntity], alias: str):
         mapping = self.mappings[entity_type]
@@ -691,13 +685,27 @@ class SessionBoundFindQuery(typing.Generic[TEntity]):
         column: str
         ascending: bool
 
+    class Join(typing.NamedTuple):
+        type: str
+        target: SQLCode
+        alias: str
+        condition: SQLCode
+
+    class PaginationArgs(typing.TypedDict, total=False):
+        first: int
+        after: KeyValue
+        last: int
+        before: KeyValue
+        offset: int
+        sort: "Sequence[SessionBoundFindQuery.Sort]"
+
     def __init__(self, session: "Session", type: Type[Entity], alias: str):
         self._session = session
         self._alias = alias
         self._mapping = session.mappings[type]
 
-        self._joins = {}
-        self._filters = list[SQLFragment]()
+        self._joins = dict[str, SessionBoundFindQuery.Join]()
+        self._filters = list[SQLCode]()
         self._default_sort = [self.asc(col.name) for col in self._mapping.primary_key.columns]
 
     def join(self, target: Type[Entity] | str, alias: str, condition: str, **params):
@@ -709,15 +717,20 @@ class SessionBoundFindQuery(typing.Generic[TEntity]):
     def _join(self, join_type: str, target: Type[Entity] | str, alias: str, condition: str, **params):
         if isinstance(target, type):
             table = self._session.mappings[target].table
-            target_qn = SQLFragment.qn(table._schema, table._name)
+            target_qn = SQLCode.qn(table._schema, table._name)
         else:
-            target_qn = SQLText(target)
+            target_qn = SQLCode((SQLText(target),))
 
-        self._joins[alias] = (join_type, target_qn, SQLFragment.parse(condition, params))
+        self._joins[alias] = SessionBoundFindQuery.Join(
+            join_type,
+            target_qn,
+            alias,
+            SQLCode.parse(condition, params),
+        )
         return self
 
     def filter(self, condition: str, **params):
-        self._filters.append(SQLFragment.parse(condition, params))
+        self._filters.append(SQLCode.parse(condition, params))
         return self
 
     @classmethod
@@ -728,16 +741,8 @@ class SessionBoundFindQuery(typing.Generic[TEntity]):
     def desc(cls, column: str):
         return cls.Sort(column, False)
 
-    async def fetch(
-        self,
-        first: int | None = None,
-        after: KeyValue | None = None,
-        last: int | None = None,
-        before: KeyValue | None = None,
-        offset: int = 0,
-        sort: Sequence[Sort] | None = None,
-    ):
-        cursor_fetch_results = await self.fetch_ids(first, after, last, before, offset, sort)
+    async def fetch(self, **kwargs: typing.Unpack[PaginationArgs]):
+        cursor_fetch_results = await self.fetch_ids(**kwargs)
         objects = await self._session.batch_get(self._mapping.object_type, cursor_fetch_results)
         return FetchResult(
             elements=typing.cast(list[TEntity], objects),
@@ -751,35 +756,11 @@ class SessionBoundFindQuery(typing.Generic[TEntity]):
         results = await self.fetch(first=1)
         return results[0] if results else None
 
-    async def fetch_ids(
-        self,
-        first: int | None = None,
-        after: KeyValue | None = None,
-        last: int | None = None,
-        before: KeyValue | None = None,
-        offset: int = 0,
-        sort: Sequence[Sort] | None = None,
-    ):
-        count = first or last
-        cursor = after or before
-        is_forward = isinstance(first, int)
-
-        assert count, 'Either "first" or "last" must be present'
-        assert not (first and last), 'Argument "first" and "last" must not be present at the same time'
-        assert not (after and before), 'Argument "after" and "before" must not be present at the same time'
-        assert not (first and before), 'Argument "first" and "before" must not be present at the same time'
-        assert not (last and after), 'Argument "last" and "after" must not be present at the same time'
-        assert first is None or first >= 0, 'Argument "first" cannot be a negative number'
-        assert last is None or last >= 0, 'Argument "last" cannot be a negative number'
+    async def fetch_ids(self, **kwargs: typing.Unpack[PaginationArgs]):
+        is_forward, count, cursor, offset, sort = self._coerce_pagination_args(kwargs)
 
         primary_columns = self._mapping.primary_key.columns
-        fragment = self._format_pagination_frag(
-            is_forward,
-            count,
-            cursor,
-            offset,
-            sort or self._default_sort,
-        )
+        fragment = self._format_fetch_sql(is_forward, count, cursor, offset, sort)
         results = await self._session._backend.fetch(*fragment.build_sql())
 
         partials = [dict(zip(primary_columns, record)) for record in results]
@@ -815,69 +796,60 @@ class SessionBoundFindQuery(typing.Generic[TEntity]):
     async def count(self):
         primary_columns = self._mapping.primary_key.columns
 
-        frag = SQLFragment.concat(
+        frag = SQLCode.concat(
             SQLText("SELECT"),
-            SQLFragment.func_call("COUNT", (SQLFragment.qn(self._alias, c.name) for c in primary_columns)),
-            self._format_from_where_frag(),
+            SQLCode.func_call("COUNT", (SQLCode.qn(self._alias, c.name) for c in primary_columns)),
+            self._format_from_clause(),
+            SQLText("WHERE"),
+            SQLCode.join(SQLText(" AND "), self._filters),
         )
         results = await self._session._backend.fetch(*frag.build_sql())
         return int(results[0]["count"])
 
-    def _format_pagination_frag(
-        self,
-        is_forward: bool,
-        count: int,
-        cursor: KeyValue | None,
-        offset: int,
-        sort: Sequence[Sort],
-    ):
+    def _coerce_pagination_args(self, kwargs: PaginationArgs):
+        first = kwargs.get("first")
+        last = kwargs.get("last")
+        after = kwargs.get("after")
+        before = kwargs.get("before")
+        offset = kwargs.get("offset", 0)
+        sort = kwargs.get("sort", self._default_sort)
+
+        count = first or last
+        cursor = after or before
+        is_forward = isinstance(first, int)
+
+        assert count, 'Either "first" or "last" must be present'
+        assert not (first and last), 'Argument "first" and "last" must not be present at the same time'
+        assert not (after and before), 'Argument "after" and "before" must not be present at the same time'
+        assert not (first and before), 'Argument "first" and "before" must not be present at the same time'
+        assert not (last and after), 'Argument "last" and "after" must not be present at the same time'
+        assert first is None or first >= 0, 'Argument "first" cannot be a negative number'
+        assert last is None or last >= 0, 'Argument "last" cannot be a negative number'
+
+        return is_forward, count, cursor, offset, sort
+
+    def _format_fetch_sql(self, forward: bool, count: int, cursor: KeyValue | None, offset: int, sort: Sequence[Sort]):
         assert sort
         primary_columns = self._mapping.primary_key.columns
         cursor_partial = self._mapping.primary_key.to_partial(cursor)
 
-        return SQLFragment.concat(
-            SQLFragment(
+        return SQLCode.concat(
+            SQLCode(
                 (
                     SQLText("WITH to_find AS NOT MATERIALIZED "),
-                    SQLFragment.paren(
-                        SQLFragment.concat(
-                            SQLText("SELECT"),
-                            SQLFragment.list(
-                                (
-                                    *(
-                                        SQLFragment.concat(
-                                            SQLFragment.qn(self._alias, c.name), SQLText("AS"), SQLText(f"c{i}")
-                                        )
-                                        for i, c in enumerate(primary_columns)
-                                    ),
-                                    *(SQLText(f"{col} AS s{i}") for i, (col, _) in enumerate(sort)),
-                                )
-                            ),
-                            self._format_from_where_frag(),
-                            SQLText("GROUP BY"),
-                            SQLFragment.list(
-                                SQLFragment.concat(SQLFragment.qn(self._alias, c.name))
-                                for i, c in enumerate(primary_columns)
-                            ),
-                        )
-                    ),
+                    SQLCode.paren(self._format_all_edges(forward, sort)),
                     SQLText.comma,
                     SQLText("cursor_edge AS "),
-                    SQLFragment.paren(
-                        SQLFragment.concat(
+                    SQLCode.paren(
+                        SQLCode.concat(
                             SQLText("SELECT"),
-                            SQLFragment.list(
-                                (
-                                    *(SQLText(f"c{i}") for i, _ in enumerate(primary_columns)),
-                                    *(SQLText(f"s{i}") for i, _ in enumerate(sort)),
-                                )
-                            ),
+                            SQLCode.list(SQLText(f"s{i}") for i, _ in enumerate(sort)),
                             SQLText("FROM to_find"),
                             SQLText("WHERE"),
-                            SQLFragment.join(
+                            SQLCode.join(
                                 SQLText(" AND "),
                                 (
-                                    SQLFragment.parse(f"c{i} = :value", {"value": cursor_partial[c]})
+                                    SQLCode.parse(f"c{i} = :value", {"value": cursor_partial[c]})
                                     for i, c in enumerate(primary_columns)
                                 ),
                             ),
@@ -886,26 +858,23 @@ class SessionBoundFindQuery(typing.Generic[TEntity]):
                 )
             ),
             SQLText("SELECT"),
-            SQLFragment.list(
-                SQLFragment.concat(SQLFragment.qn("t1", f"c{i}"), SQLText("AS"), SQLText.quote(c.name))
-                for i, c in enumerate(primary_columns)
-            ),
+            SQLCode.list(SQLCode.qn("t1", f"c{i}").alias(c.name) for i, c in enumerate(primary_columns)),
             SQLText("FROM to_find t1 LEFT JOIN cursor_edge t2 ON TRUE"),
             SQLText("WHERE"),
-            SQLFragment.func_call(
+            SQLCode.func_call(
                 "COALESCE",
                 (
-                    SQLFragment.join(
+                    SQLCode.join(
                         SQLText(" OR "),
                         (
-                            SQLFragment.paren(
-                                SQLFragment.join(
+                            SQLCode.paren(
+                                SQLCode.join(
                                     SQLText(" AND "),
                                     (
                                         (
-                                            SQLFragment.concat(
+                                            SQLCode.concat(
                                                 SQLText(f"t1.s{j}"),
-                                                SQLText(">") if is_forward == s.ascending else SQLText("<"),
+                                                SQLText(">") if forward == s.ascending else SQLText("<"),
                                                 SQLText(f"t2.s{j}"),
                                             )
                                             if i == j
@@ -921,42 +890,76 @@ class SessionBoundFindQuery(typing.Generic[TEntity]):
                     SQLText("TRUE"),
                 ),
             ),
-            SQLText("ORDER BY"),
-            SQLFragment.list(
-                SQLFragment.concat(
-                    SQLFragment.qn("t1", f"s{i}"),
-                    SQLText("ASC") if is_forward == s.ascending else SQLText("DESC"),
-                )
-                for i, s in enumerate(sort)
-            ),
             SQLText("LIMIT"),
             SQLVar(count + 1),
             SQLText("OFFSET"),
             SQLVar(offset),
         )
 
-    def _format_from_where_frag(self):
+    def _format_all_edges(self, forward: bool, sort: Sequence[Sort]):
+        primary_columns = self._mapping.primary_key.columns
+        return SQLCode.concat(
+            SQLText("SELECT"),
+            SQLCode.list(
+                SQLCode.list(
+                    *(SQLCode.qn(self._alias, c.name).alias(f"c{i}") for i, c in enumerate(primary_columns)),
+                    *(SQLText(f"{s.column} AS s{i}") for i, s in enumerate(sort)),
+                )
+            ),
+            self._format_from_clause(),
+            SQLText("WHERE"),
+            SQLCode.join(SQLText(" AND "), self._filters),
+            SQLText("GROUP BY"),
+            SQLCode.list(SQLCode.concat(SQLCode.qn(self._alias, c.name)) for c in primary_columns),
+            SQLText("ORDER BY"),
+            SQLCode.list(
+                SQLCode.concat(
+                    SQLText(s.column),
+                    SQLText("ASC") if forward == s.ascending else SQLText("DESC"),
+                )
+                for s in sort
+            ),
+        )
+
+    def _format_cursor_edge(self, cursor: KeyValue | None, sort: Sequence[Sort]):
+        primary_columns = self._mapping.primary_key.columns
+        cursor_partial = self._mapping.primary_key.to_partial(cursor)
+        SQLCode.concat(
+            SQLText("SELECT"),
+            SQLCode.list(SQLText(f"s{i}") for i, _ in enumerate(sort)),
+            SQLText("FROM to_find"),
+            SQLText("WHERE"),
+            SQLCode.join(
+                SQLText(" AND "),
+                (SQLCode.parse(f"c{i} = :value", {"value": cursor_partial[c]}) for i, c in enumerate(primary_columns)),
+            ),
+        )
+
+    def _format_from_clause(self):
         schema = self._mapping.table._schema
         table = self._mapping.table._name
 
-        return SQLFragment.concat(
+        return SQLCode.concat(
             SQLText("FROM"),
-            SQLFragment.qn(schema, table),
-            SQLText("AS"),
-            SQLText.quote(self._alias),
+            SQLCode.qn(schema, table).alias(self._alias),
             *(
-                SQLFragment.concat(
-                    SQLText(f"{join}"),
-                    target,
-                    SQLText("AS"),
-                    SQLText.quote(alias),
+                SQLCode.concat(
+                    SQLText(f"{join.type}"),
+                    join.target.alias(alias),
                     SQLText("ON"),
-                    condition,
+                    join.condition,
                 )
-                for alias, (join, target, condition) in self._joins.items()
+                for alias, join in self._joins.items()
             ),
-            SQLText("WHERE"),
-            SQLFragment.join(SQLText(" AND "), self._filters),
+        )
+
+    def _format_order_by_frag(self, is_forward: bool, sort: Sequence[Sort]):
+        return SQLCode.concat(
+            SQLText("ORDER BY"),
+            SQLCode.list(
+                SQLCode.concat(SQLText(s.column), SQLText("ASC") if is_forward == s.ascending else SQLText("DESC"))
+                for s in sort
+            ),
         )
 
 
@@ -981,7 +984,7 @@ class FetchResult(list[T]):
 
 class SessionBoundRawQuery:
     def __init__(self, session: "Session", query: str, params: dict[str, PostgresCodable]):
-        self._frag = SQLFragment.parse(query, params)
+        self._frag = SQLCode.parse(query, params)
         self._session = session
 
     async def fetch(self):

@@ -25,7 +25,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.pyright]
-include = ["orm1", "tests"]
+include = ["src", "tests"]
 pythonVersion = "3.12"
 
 [tool.black]
