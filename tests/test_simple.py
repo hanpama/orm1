@@ -317,7 +317,7 @@ class SimpleTest(IsolatedAsyncioTestCase):
 
     async def test_root_find_forward(self):
         s = self._session()
-        query = s.find(Purchase, "p").filter(
+        query = s.query(Purchase, "p").filter(
             "p.user_id = :value",
             value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
         )
@@ -367,7 +367,7 @@ class SimpleTest(IsolatedAsyncioTestCase):
 
     async def test_root_find_backward(self):
         s = self._session()
-        query = s.find(Purchase, "p").filter(
+        query = s.query(Purchase, "p").filter(
             "p.user_id = :value",
             value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
         )
@@ -419,7 +419,7 @@ class SimpleTest(IsolatedAsyncioTestCase):
     async def test_joined_find_forward(self):
         s = self._session()
         query = (
-            s.find(Purchase, "p")
+            s.query(Purchase, "p")
             .filter(
                 "p.user_id = :value",
                 value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",

@@ -559,12 +559,11 @@ class Session:
         await self._delete_by_key(mapping, mapping.primary_key, ids)
         self._untrack(mapping, ids)
 
-    def find(self, entity_type: Type[TEntity], alias: str):
-        mapping = self.mappings[entity_type]
-        return SessionBoundFindQuery[TEntity](self, entity_type, alias)
+    def query(self, entity_type: Type[TEntity], alias: str):
+        return EntityQuery[TEntity](self, entity_type, alias)
 
     def raw(self, query: str, **params):
-        return SessionBoundRawQuery(self, query, params)
+        return RawQuery(self, query, params)
 
     async def _get_by_key(self, mapping: EntityMapping, key: Key, values: Collection[KeyValue]):
         op = mapping.create_select_operation(key, values)
@@ -680,7 +679,7 @@ class Session:
         return {child_id for id in ids for child_id in self._children_map.get((child, id), ())}
 
 
-class SessionBoundFindQuery(typing.Generic[TEntity]):
+class EntityQuery(typing.Generic[TEntity]):
     class Sort(typing.NamedTuple):
         column: str
         ascending: bool
@@ -697,14 +696,14 @@ class SessionBoundFindQuery(typing.Generic[TEntity]):
         last: int
         before: KeyValue
         offset: int
-        sort: "Sequence[SessionBoundFindQuery.Sort]"
+        sort: "Sequence[EntityQuery.Sort]"
 
     def __init__(self, session: "Session", type: Type[Entity], alias: str):
         self._session = session
         self._alias = alias
         self._mapping = session.mappings[type]
 
-        self._joins = dict[str, SessionBoundFindQuery.Join]()
+        self._joins = dict[str, EntityQuery.Join]()
         self._filters = list[SQLCode]()
         self._default_sort = [self.asc(col.name) for col in self._mapping.primary_key.columns]
 
@@ -721,7 +720,7 @@ class SessionBoundFindQuery(typing.Generic[TEntity]):
         else:
             target_qn = SQLCode((SQLText(target),))
 
-        self._joins[alias] = SessionBoundFindQuery.Join(
+        self._joins[alias] = EntityQuery.Join(
             join_type,
             target_qn,
             alias,
@@ -982,7 +981,7 @@ class FetchResult(list[T]):
         self.end_cursor = end_cursor
 
 
-class SessionBoundRawQuery:
+class RawQuery:
     def __init__(self, session: "Session", query: str, params: dict[str, PostgresCodable]):
         self._frag = SQLCode.parse(query, params)
         self._session = session
