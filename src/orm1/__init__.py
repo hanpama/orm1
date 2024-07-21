@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import typing
 import re
 from typing import Collection, Sequence, Type
@@ -9,19 +8,19 @@ import asyncpg
 # database metadata
 
 
-@dataclass
 class Table:
-    schema: str | None
-    name: str
+    def __init__(self, schema: str, name: str):
+        self._schema = schema
+        self._name = name
 
 
-@dataclass
 class Column:
-    name: str
-    type: str
-    default: str = ""
-    updatable: bool = False
-    primary: bool = False
+    def __init__(self, name: str, type: str, default: str = "", updatable: bool = False, primary: bool = False):
+        self.name = name
+        self.type = type
+        self.default = default
+        self.updatable = updatable
+        self.primary = primary
 
 
 # mapping
@@ -489,7 +488,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         if isinstance(target, str):
             return SQLFragment.parse(target, params)
         target_mapping = self._session.mappings[target]
-        return SQLFragment(SQLName(prefix=target_mapping.table.schema, name=target_mapping.table.name))
+        return SQLFragment(SQLName(prefix=target_mapping.table._schema, name=target_mapping.table._name))
 
     async def count(self):
         return await self._session._backend.count_structured_query(self._query)
@@ -570,7 +569,7 @@ class AsyncPGSessionBackend(SessionBackend):
         select_list = self._sql_l(self._sql_qn("t", name) for name in select)
         vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(key.columns.values()))
         join_cols = self._sql_l(self._sql_q(col) for col in key.columns)
-        from_table = self._sql_qn(mapping.table.schema, mapping.table.name)
+        from_table = self._sql_qn(mapping.table._schema, mapping.table._name)
 
         query = f"SELECT {select_list} FROM {from_table} t JOIN UNNEST({vars}) v({join_cols}) USING ({join_cols});"
         params = [[rec[n] for rec in key_records] for n in key.columns]
@@ -584,7 +583,7 @@ class AsyncPGSessionBackend(SessionBackend):
         cols = {**mapping.columns, **key.columns}
         values = [{**key.to_partial(kv), **mapping.to_record(ev)} for kv, ev in entities]
 
-        insert_into = self._sql_qn(mapping.table.schema, mapping.table.name)
+        insert_into = self._sql_qn(mapping.table._schema, mapping.table._name)
         col_names = self._sql_l(self._sql_q(n) for n in cols)
         returning_names = self._sql_l(self._sql_q(name) for name in cols)
         vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(cols.values()))
@@ -604,7 +603,7 @@ class AsyncPGSessionBackend(SessionBackend):
         set_columns = {k: v for k, v in mapping.columns.items() if k not in key_columns}
         all_columns = {**set_columns, **key_columns}
 
-        update = self._sql_qn(mapping.table.schema, mapping.table.name)
+        update = self._sql_qn(mapping.table._schema, mapping.table._name)
         set_left = self._sql_l(self._sql_q(name) for name in set_columns)
         set_right = self._sql_l(self._sql_qn("v", name) for name in set_columns)
         if len(set_columns) > 1:
@@ -637,7 +636,7 @@ class AsyncPGSessionBackend(SessionBackend):
 
         where_cols = key.columns
 
-        delete_from = self._sql_qn(mapping.table.schema, mapping.table.name)
+        delete_from = self._sql_qn(mapping.table._schema, mapping.table._name)
         vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(where_cols.values()))
         var_colnames = self._sql_l(self._sql_q(name) for name in where_cols)
 
@@ -658,7 +657,7 @@ class AsyncPGSessionBackend(SessionBackend):
 
         primary_col_names = [n for n in query.mapping.primary_key.columns]
         select = self._sql_l(self._sql_qn(query.alias, n) for n in primary_col_names)
-        from_table = self._sql_qn(query.mapping.table.schema, query.mapping.table.name)
+        from_table = self._sql_qn(query.mapping.table._schema, query.mapping.table._name)
         from_alias = self._sql_q(query.alias)
         joins = self._sql_l(self._sql_join(join, params) for join in query.joins.values())
         filters = self._sql_filter_conds(query.filter_conds, params)
@@ -682,7 +681,7 @@ class AsyncPGSessionBackend(SessionBackend):
 
         primary_key = query.mapping.primary_key
         select = self._sql_l(self._sql_qn(query.alias, n) for n in primary_key.columns)
-        from_table = self._sql_qn(query.mapping.table.schema, query.mapping.table.name)
+        from_table = self._sql_qn(query.mapping.table._schema, query.mapping.table._name)
         from_alias = self._sql_q(query.alias)
         joins = self._sql_l(self._sql_join(join, params) for join in query.joins.values())
         filters = self._sql_filter_conds(query.filter_conds, params)
