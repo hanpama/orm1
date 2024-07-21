@@ -3,8 +3,8 @@ import orm1
 
 from . import public
 
-import tests.entities.course
 import tests.entities.purchase
+import tests.entities.course
 
 
 orm1.register_mapping(

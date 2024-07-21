@@ -6,6 +6,9 @@ from typing import Collection, Sequence, Type
 import asyncpg
 
 
+# database metadata
+
+
 @dataclass
 class Table:
     schema: str | None
@@ -20,6 +23,8 @@ class Column:
     updatable: bool = False
     primary: bool = False
 
+
+# mapping
 
 Entity = object
 KeyValue = typing.Hashable
@@ -56,7 +61,7 @@ class Field:
 
 
 class Key(typing.Protocol):
-    columns: Sequence[Column]
+    columns: dict[str, Column]
 
     def from_partial(self, partial: Rec) -> KeyValue: ...
     def to_partial(self, value: KeyValue) -> Rec: ...
@@ -65,7 +70,7 @@ class Key(typing.Protocol):
 class SimpleKey(Key):
     def __init__(self, field: Field):
         self.field = field
-        self.columns = [field.column]
+        self.columns = {field.column.name: field.column}
 
     def from_partial(self, partial: Rec) -> KeyValue:
         return self.field.from_partial(partial)
@@ -80,7 +85,7 @@ class SimpleKey(Key):
 class CompositeKey(Key):
     def __init__(self, fields: Sequence[Field]):
         self.fields = fields
-        self.columns = [field.column for field in fields]
+        self.columns = {f.column.name: f.column for f in fields}
 
     def from_partial(self, partial: Rec) -> KeyValue:
         return tuple(field.from_partial(partial) for field in self.fields)
@@ -101,22 +106,23 @@ PrimaryKey = SimpleKey | CompositeKey
 
 class ParentalKey(Key):
     def __init__(self, columns: Sequence[Column], parent_key: Key):
-        self.columns = columns
+        self.columns = {c.name: c for c in columns}
         self._parent_key = parent_key
 
     def from_partial(self, partial: Rec) -> KeyValue:
-        rec = {pc.name: partial[c.name] for c, pc in zip(self.columns, self._parent_key.columns)}
+        rec = {pc: partial[c] for c, pc in zip(self.columns, self._parent_key.columns)}
         return self._parent_key.from_partial(rec)
 
     def to_partial(self, value: KeyValue) -> Rec:
         rec = self._parent_key.to_partial(value)
-        return {c.name: rec[pc.name] for c, pc in zip(self.columns, self._parent_key.columns)}
+        return {c: rec[pc] for c, pc in zip(self.columns, self._parent_key.columns)}
 
 
 class Child:
-    def __init__(self, name: str, mapping: typing.Callable[..., "EntityMapping"]):
+    def __init__(self, name: str, mapping: typing.Callable[..., "EntityMapping"], *columns: Column):
         self.name = name
         self._mapping = mapping
+        self._columns = columns
 
     def get_entity_attribute(self, entity: Entity) -> Sequence[Entity]: ...
     def set_entity_attribute(self, entity: Entity, values: list[Entity]): ...
@@ -125,7 +131,10 @@ class Child:
         return self._mapping()
 
     def parental_key(self, parent_key: Key) -> ParentalKey:
-        return ParentalKey(self._mapping().parent_reference, parent_key)
+        return ParentalKey(self._columns, parent_key)
+
+    def get_columns(self):
+        return {c.name: c for c in self._columns}
 
 
 class Plural(Child):
@@ -146,23 +155,23 @@ class Singular(Child):
         setattr(entity, self.name, values[0] if len(values) else None)
 
 
-class EntityMapping(typing.NamedTuple):
-    object_type: Type[Entity]
-    table: Table
-    fields: list[Field]
-    children: list[Child]
-    primary_key: PrimaryKey
-    parent_reference: list[Column]
+class EntityMapping:
+    def __init__(
+        self,
+        object_type: Type[Entity],
+        table: Table,
+        fields: list[Field],
+        children: list[Child],
+        primary_key: PrimaryKey,
+    ):
+        self.object_type = object_type
+        self.table = table
+        self.fields = fields
+        self.children = children
+        self.primary_key = primary_key
 
     @classmethod
-    def define(
-        cls,
-        entity: Type[Entity],
-        table: Table,
-        fields: list[Field] = [],
-        children: list[Child] = [],
-        parental_reference: list[Column] = [],
-    ):
+    def define(cls, entity: Type[Entity], table: Table, fields: list[Field] = [], children: list[Child] = []):
         primary_fields = [f for f in fields if f.primary]
         if len(primary_fields) > 1:
             primary_key = CompositeKey(primary_fields)
@@ -170,7 +179,7 @@ class EntityMapping(typing.NamedTuple):
             primary_key = SimpleKey(primary_fields[0])
         else:
             raise Exception(f"No primary key defined: {entity.__name__}")
-        return cls(entity, table, fields, children, primary_key, parental_reference)
+        return cls(entity, table, fields, children, primary_key)
 
     def identify_entity(self, entity: Entity) -> KeyValue:
         return self.primary_key.get_from_entity(entity)
@@ -191,13 +200,12 @@ class EntityMapping(typing.NamedTuple):
             f.write_to_record(entity, full)
         return full
 
-    def get_columns(self):
-        cols = dict[str, Column]()
-        for f in self.fields:
-            cols[f.column.name] = f.column
-        for c in self.parent_reference:
-            cols[c.name] = c
-        return list(cols.values())
+    @property
+    def columns(self):
+        return {f.column.name: f.column for f in self.fields}
+
+
+# sessions
 
 
 class SessionBackend(typing.Protocol):
@@ -385,7 +393,7 @@ class Session:
         return {child_id for id in ids for child_id in self._children_map.get((child, id), ())}
 
 
-# SQL object models
+# SQL Object Model
 
 
 class SQLText(typing.NamedTuple):
@@ -469,7 +477,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         return self
 
     def filter(self, condition: str, **params):
-        self._query.filter_conds.append(SQLFragment.parse(condition, **params))
+        self._query.filter_conds.append(SQLFragment.parse(condition, params))
         return self
 
     def order_by(self, *options: StructuredQuery.OrderByOption):
@@ -556,16 +564,16 @@ class AsyncPGSessionBackend(SessionBackend):
         if not key_values:
             return []
 
-        select = {col.name: col for col in (*mapping.get_columns(), *key.columns)}
+        select = {**mapping.columns, **key.columns}
         key_records = [key.to_partial(val) for val in key_values]
 
         select_list = self._sql_l(self._sql_qn("t", name) for name in select)
-        vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(key.columns))
-        join_cols = self._sql_l(self._sql_q(col.name) for col in key.columns)
+        vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(key.columns.values()))
+        join_cols = self._sql_l(self._sql_q(col) for col in key.columns)
         from_table = self._sql_qn(mapping.table.schema, mapping.table.name)
 
         query = f"SELECT {select_list} FROM {from_table} t JOIN UNNEST({vars}) v({join_cols}) USING ({join_cols});"
-        params = [[rec[i.name] for rec in key_records] for i in key.columns]
+        params = [[rec[n] for rec in key_records] for n in key.columns]
         records = await self._conn.fetch(query, *params)
         return [dict(zip(select, record)) for record in records]
 
@@ -573,14 +581,14 @@ class AsyncPGSessionBackend(SessionBackend):
         if not entities:
             return []
 
-        cols = {col.name: col for col in (*mapping.get_columns(), *key.columns)}
-        values = [key.to_partial(val) for val in entities]
+        cols = {**mapping.columns, **key.columns}
+        values = [{**key.to_partial(kv), **mapping.to_record(ev)} for kv, ev in entities]
 
         insert_into = self._sql_qn(mapping.table.schema, mapping.table.name)
-        col_names = self._sql_l(self._sql_q(col.name) for col in mapping.get_columns())
+        col_names = self._sql_l(self._sql_q(n) for n in cols)
         returning_names = self._sql_l(self._sql_q(name) for name in cols)
-        vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(mapping.get_columns()))
-        selects = self._sql_l(f"COALESCE(v.{col.name}, {col.default or 'NULL'})" for col in mapping.get_columns())
+        vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(cols.values()))
+        selects = self._sql_l(f"COALESCE(v.{col.name}, {col.default or 'NULL'})" for col in cols.values())
 
         query = f"INSERT INTO {insert_into} ({col_names}) SELECT {selects} FROM UNNEST({vars}) v({col_names}) RETURNING {returning_names};"
         params = [[cvm[name] for cvm in values] for name in cols]
@@ -592,9 +600,9 @@ class AsyncPGSessionBackend(SessionBackend):
         if not values:
             return []
 
-        all_columns = {c.name: c for c in mapping.get_columns()}
-        key_columns = {c.name: c for c in key.columns}
-        set_columns = {c.name: c for c in mapping.get_columns() if c.name not in key_columns}
+        key_columns = {**key.columns, **mapping.primary_key.columns}
+        set_columns = {k: v for k, v in mapping.columns.items() if k not in key_columns}
+        all_columns = {**set_columns, **key_columns}
 
         update = self._sql_qn(mapping.table.schema, mapping.table.name)
         set_left = self._sql_l(self._sql_q(name) for name in set_columns)
@@ -606,9 +614,9 @@ class AsyncPGSessionBackend(SessionBackend):
         vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(all_columns.values()))
         var_colnames = self._sql_l(self._sql_q(name) for name in all_columns)
 
-        returning = self._sql_l(self._sql_q(name) for name in all_columns)
         where_left = self._sql_l(self._sql_qn("t", name) for name in key_columns)
         where_right = self._sql_l(self._sql_qn("v", name) for name in key_columns)
+        returning = self._sql_l(self._sql_qn("t", name) for name in all_columns)
 
         records = [{**mapping.to_record(ev), **key.to_partial(kv)} for kv, ev in values]
 
@@ -627,7 +635,7 @@ class AsyncPGSessionBackend(SessionBackend):
         if not key_values:
             return
 
-        where_cols = {c.name: c for c in key.columns}
+        where_cols = key.columns
 
         delete_from = self._sql_qn(mapping.table.schema, mapping.table.name)
         vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(where_cols.values()))
@@ -648,7 +656,7 @@ class AsyncPGSessionBackend(SessionBackend):
     async def fetch_structured_query(self, query: StructuredQuery, limit: int | None, offset: int) -> list[Rec]:
         params = []
 
-        primary_col_names = [c.name for c in query.mapping.primary_key.columns]
+        primary_col_names = [n for n in query.mapping.primary_key.columns]
         select = self._sql_l(self._sql_qn(query.alias, n) for n in primary_col_names)
         from_table = self._sql_qn(query.mapping.table.schema, query.mapping.table.name)
         from_alias = self._sql_q(query.alias)
@@ -673,7 +681,7 @@ class AsyncPGSessionBackend(SessionBackend):
         params = []
 
         primary_key = query.mapping.primary_key
-        select = self._sql_l(self._sql_qn(query.alias, c.name) for c in primary_key.columns)
+        select = self._sql_l(self._sql_qn(query.alias, n) for n in primary_key.columns)
         from_table = self._sql_qn(query.mapping.table.schema, query.mapping.table.name)
         from_alias = self._sql_q(query.alias)
         joins = self._sql_l(self._sql_join(join, params) for join in query.joins.values())
