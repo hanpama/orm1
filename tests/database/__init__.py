@@ -3,12 +3,12 @@ import orm1
 
 from . import public
 
-import tests.entities.course
 import tests.entities.purchase
+import tests.entities.course
 
 
 orm1.register_mapping(
-    orm1.EntityMapping(
+    orm1.EntityMapping.define(
         entity=tests.entities.course.Course,
         table=public.course,
         fields=[
@@ -23,7 +23,7 @@ orm1.register_mapping(
     )
 )
 orm1.register_mapping(
-    orm1.EntityMapping(
+    orm1.EntityMapping.define(
         entity=tests.entities.course.CourseAttachment,
         table=public.course_attachment,
         fields=[
@@ -34,7 +34,7 @@ orm1.register_mapping(
     )
 )
 orm1.register_mapping(
-    orm1.EntityMapping(
+    orm1.EntityMapping.define(
         entity=tests.entities.course.CourseModule,
         table=public.course_module,
         fields=[
@@ -48,7 +48,7 @@ orm1.register_mapping(
     )
 )
 orm1.register_mapping(
-    orm1.EntityMapping(
+    orm1.EntityMapping.define(
         entity=tests.entities.course.CourseModuleMaterial,
         table=public.course_module_material,
         fields=[
@@ -59,7 +59,7 @@ orm1.register_mapping(
     )
 )
 orm1.register_mapping(
-    orm1.EntityMapping(
+    orm1.EntityMapping.define(
         entity=tests.entities.purchase.Purchase,
         table=public.purchase,
         fields=[
@@ -75,7 +75,7 @@ orm1.register_mapping(
     )
 )
 orm1.register_mapping(
-    orm1.EntityMapping(
+    orm1.EntityMapping.define(
         entity=tests.entities.purchase.PurchaseLineItem,
         table=public.purchase_line_item,
         fields=[
@@ -86,7 +86,7 @@ orm1.register_mapping(
     )
 )
 orm1.register_mapping(
-    orm1.EntityMapping(
+    orm1.EntityMapping.define(
         entity=tests.entities.purchase.PurchaseBankTransfer,
         table=public.purchase_bank_transfer,
         fields=[
@@ -101,7 +101,7 @@ orm1.register_mapping(
     )
 )
 orm1.register_mapping(
-    orm1.EntityMapping(
+    orm1.EntityMapping.define(
         entity=tests.entities.purchase.PurchaseBankTransferAttachment,
         table=public.purchase_bank_transfer_attachment,
         fields=[
@@ -112,7 +112,7 @@ orm1.register_mapping(
     )
 )
 orm1.register_mapping(
-    orm1.EntityMapping(
+    orm1.EntityMapping.define(
         entity=tests.entities.purchase.PurchaseCouponUsage,
         table=public.purchase_coupon_usage,
         fields=[

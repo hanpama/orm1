@@ -3,7 +3,7 @@ from unittest import IsolatedAsyncioTestCase
 
 import asyncpg
 
-from orm1 import Session, SessionBackend
+from orm1 import Session, AsyncPGSessionBackend
 
 from . import database as _
 from .entities.course import Course, CourseAttachment, CourseModule, CourseModuleMaterial
@@ -12,39 +12,39 @@ from .entities.course import Course, CourseAttachment, CourseModule, CourseModul
 class CompositeTest(IsolatedAsyncioTestCase):
 
     course1: Course = Course(
-        semester_id="2021-01",
-        subject_id="CS-3011",
+        semester_id="2101",
+        subject_id="CS3011",
         created_at=datetime.now(),
         modules=[
             CourseModule(
-                id="f4578462-26c4-4f2b-8ce1-fb1810d325b5",
+                id="CS3011210101",
                 title="1. Introduction",
                 created_at=datetime.now(),
                 materials=[
                     CourseModuleMaterial(
-                        id="84fae7a2-e041-4091-88d7-c9114ac2d8ec",
+                        id="CS3011210101A",
                         media_uri="https://example.com/attachment1",
                         created_at=datetime.now(),
                     ),
                     CourseModuleMaterial(
-                        id="67f66562-5a0e-4ff3-8895-05bfd8159d0b",
+                        id="CS3011210101B",
                         media_uri="https://example.com/attachment2",
                         created_at=datetime.now(),
                     ),
                 ],
             ),
             CourseModule(
-                id="72c8a184-0215-43ad-9999-c2c82856decf",
+                id="CS3011210102",
                 title="2. Basics",
                 created_at=datetime.now(),
                 materials=[
                     CourseModuleMaterial(
-                        id="5aba3b4f-fc79-46b1-91af-195ae66cc30b",
+                        id="CS3011210102A",
                         media_uri="https://example.com/attachment3",
                         created_at=datetime.now(),
                     ),
                     CourseModuleMaterial(
-                        id="0efbd447-be20-4bc5-a6a3-9b9748143b26",
+                        id="CS3011210102B",
                         media_uri="https://example.com/attachment4",
                         created_at=datetime.now(),
                     ),
@@ -53,7 +53,7 @@ class CompositeTest(IsolatedAsyncioTestCase):
         ],
         attachments=[
             CourseAttachment(
-                id="fd5400f0-f490-45a9-8629-91bb66a474c3",
+                id="CS30112101-1",
                 media_uri="https://example.com/attachment5",
                 created_at=datetime.now(),
             ),
@@ -69,7 +69,7 @@ class CompositeTest(IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         self._conn: asyncpg.Connection = await asyncpg.connect(self.dsn)
-        self._backend = SessionBackend(self._conn)
+        self._backend = AsyncPGSessionBackend(self._conn)
         self._tx = self._conn.transaction()
 
         session = Session(self._backend)

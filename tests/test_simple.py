@@ -5,7 +5,7 @@ from uuid import UUID
 
 import asyncpg
 
-from orm1 import Session, SessionBackend
+from orm1 import Session, AsyncPGSessionBackend
 
 from . import database as _
 from .entities.purchase import (
@@ -20,6 +20,7 @@ from .entities.purchase import (
 class SimpleTest(IsolatedAsyncioTestCase):
 
     purchase1 = Purchase(
+        id=UUID("a028f36d-4cba-476f-9143-3bbe8e0b5f8d"),
         code="CP-00032",
         user_id=UUID("50dc79f1-06d7-44d3-b1d4-e8db7d982a59"),
         line_items=[
@@ -317,161 +318,34 @@ class SimpleTest(IsolatedAsyncioTestCase):
 
     async def test_root_find_forward(self):
         s = self._session()
-        query = s.find(Purchase, "p").filter(
+        q = s.query(Purchase, "p").filter(
             "p.user_id = :value",
             value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
         )
-        results = await query.fetch(
-            first=2,
-            sort=[
-                query.desc("p.code"),
-                query.asc("p.id"),
-            ],
-        )
+        results = await q.order_by(
+            q.desc("p.code"),
+            q.asc("p.id"),
+        ).fetch(limit=2)
 
         assert len(results) == 2
 
         assert results[0].code == self.purchase3.code
         assert results[1].code == self.purchase2.code
-        assert results.has_previous_page is False
-        assert results.has_next_page is True
-
-        results = await query.fetch(
-            first=2,
-            sort=[
-                query.desc("p.code"),
-                query.asc("p.id"),
-            ],
-            after=results.end_cursor,
-        )
-
-        assert len(results) == 1
-        assert results[0].code == self.purchase1.code
-        assert results.has_previous_page is True
-        assert results.has_next_page is False
-
-        results = await query.fetch(
-            first=3,
-            sort=[
-                query.desc("p.code"),
-                query.asc("p.id"),
-            ],
-        )
-
-        assert len(results) == 3
-        assert results[0].code == self.purchase3.code
-        assert results[1].code == self.purchase2.code
-        assert results[2].code == self.purchase1.code
-        assert results.has_previous_page is False
-        assert results.has_next_page is False
-
-    async def test_root_find_backward(self):
-        s = self._session()
-        query = s.find(Purchase, "p").filter(
-            "p.user_id = :value",
-            value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
-        )
-        results = await query.fetch(
-            last=2,
-            sort=[
-                query.asc("p.code"),
-                query.asc("p.id"),
-            ],
-        )
-        assert len(results) == 2
-
-        assert results[0].code == self.purchase2.code
-        assert results[1].code == self.purchase3.code
-
-        assert results.has_previous_page is True
-        assert results.has_next_page is False
-
-        results = await query.fetch(
-            last=2,
-            sort=[
-                query.asc("p.code"),
-                query.asc("p.id"),
-            ],
-            before=results.start_cursor,
-        )
-
-        assert len(results) == 1
-        assert results[0].code == self.purchase1.code
-        assert results.has_previous_page is False
-        assert results.has_next_page is True
-
-        results = await query.fetch(
-            last=3,
-            sort=[
-                query.asc("p.code"),
-                query.asc("p.id"),
-            ],
-        )
-
-        assert len(results) == 3
-        assert results[0].code == self.purchase1.code
-        assert results[1].code == self.purchase2.code
-        assert results[2].code == self.purchase3.code
-
-        assert results.has_previous_page is False
-        assert results.has_next_page is False
-
-    async def test_joined_find_forward(self):
-        s = self._session()
-        query = (
-            s.find(Purchase, "p")
-            .filter(
-                "p.user_id = :value",
-                value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
-            )
-            .join(
-                PurchaseLineItem,
-                "pl",
-                "p.id = pl.purchase_id",
-            )
-            .filter(
-                "pl.product_id = :value",
-                value="853868c7-570c-4e65-8d6d-ebeb185e4eb7",
-            )
-        )
-        results = await query.fetch(
-            first=1,
-            sort=[
-                query.desc("MAX(pl.quantity)"),
-                query.desc("p.id"),
-            ],
-        )
-
-        assert len(results) == 1
-        assert results[0].code == self.purchase1.code
-        assert results.has_previous_page is False
-        assert results.has_next_page is True
-
-        results = await query.fetch(
-            first=1,
-            sort=[
-                query.desc("MAX(pl.quantity)"),
-                query.desc("p.id"),
-            ],
-            after=results.end_cursor,
-        )
-
-        assert len(results) == 1
-        assert results[0].code == self.purchase2.code
-        assert results.has_previous_page is True
-        assert results.has_next_page is False
 
     async def asyncSetUp(self) -> None:
         self._conn: asyncpg.Connection = await asyncpg.connect(self.dsn)
-        self._backend = SessionBackend(self._conn)
+        self._backend = AsyncPGSessionBackend(self._conn)
         self._tx = self._conn.transaction()
 
         session = Session(self._backend)
 
         await self._tx.start()
-        await session.save(self.purchase1)
-        await session.save(self.purchase2)
-        await session.save(self.purchase3)
+        await session.batch_save(
+            Purchase,
+            self.purchase1,
+            self.purchase2,
+            self.purchase3,
+        )
 
         return await super().asyncSetUp()
 

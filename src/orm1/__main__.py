@@ -378,7 +378,7 @@ class EntityMappingRenderer:
 
     def _render_entity_mapping(self, entity_def: EntityDefinition):
         lines = [
-            f"{_mod}.EntityMapping(",
+            f"{_mod}.EntityMapping.define(",
             f"    entity={entity_def.entity_type.__module__}.{entity_def.entity_type.__name__},",
             f"    table={entity_def.schema}.{entity_def.table},",
         ]

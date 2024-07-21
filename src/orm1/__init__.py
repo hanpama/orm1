@@ -1,196 +1,35 @@
+from dataclasses import dataclass
 import typing
 import re
-from typing import Collection, Iterable, Sequence, Type
-import functools
+from typing import Collection, Sequence, Type
 
 import asyncpg
 
 
+# database metadata
+
+
+@dataclass
 class Table:
-    def __init__(self, schema: str, name: str):
-        self._schema = schema
-        self._name = name
-
-    def __repr__(self) -> str:
-        return f"Table({self._schema!r}, {self._name!r})"
+    schema: str | None
+    name: str
 
 
+@dataclass
 class Column:
-    def __init__(self, name: str, type: str, default="", updatable=True, primary=False):
-        self.name = name
-        self.type = type
-        self.default = default
-        self.updatable = updatable
-        self.primary = primary
+    name: str
+    type: str
+    default: str = ""
+    updatable: bool = False
+    primary: bool = False
 
-    def __repr__(self) -> str:
-        return f"Column({self.name!r}, {self.type!r}, default={self.default!r}, updatable={self.updatable}, primary={self.primary})"
 
+# mapping
 
 Entity = object
 KeyValue = typing.Hashable
 PostgresCodable = typing.Any
-Rec = dict[Column, PostgresCodable]
-
-
-class SQLText:
-    def __init__(self, text: str):
-        self.text = text
-
-    def __iter__(self):
-        yield self
-
-    @classmethod
-    def quote(cls, name: str):
-        name = name.replace('"', '""')
-        return cls(f'"{name}"')
-
-    dot: "SQLText"
-    space: "SQLText"
-    comma: "SQLText"
-    lparen: "SQLText"
-    rparen: "SQLText"
-
-
-SQLText.dot = SQLText(".")
-SQLText.space = SQLText(" ")
-SQLText.comma = SQLText(", ")
-SQLText.lparen = SQLText("(")
-SQLText.rparen = SQLText(")")
-
-
-class SQLVar:
-    def __init__(self, value: PostgresCodable, type=""):
-        self.value = value
-        self.type = type
-
-    def __iter__(self):
-        yield self
-
-    def typed(self, type: str):
-        return SQLFragment((self, SQLText("::"), SQLText(type)))
-
-
-class SQLFragment:
-    def __init__(self, elements: Collection["SQLFragment | SQLText | SQLVar"]):
-        self._elements = elements
-
-    def __iter__(self):
-        for el in self._elements:
-            if isinstance(el, SQLText):
-                yield el
-            elif isinstance(el, SQLVar):
-                yield el
-            else:
-                yield from el
-
-    _patt_word = re.compile(r"('[^']*'|\"[^\"]*\"|\s+|::|:\w+|\w+|[^\w\s])")
-    _patt_param = re.compile(r":(\w+)")
-
-    @classmethod
-    def parse(cls, sql: str, params: dict[str, SQLVar | PostgresCodable]):
-        tokens = list[SQLText | SQLVar]()
-        words: list[str] = cls._patt_word.findall(sql)
-
-        for word in words:
-            if matched := cls._patt_param.match(word):
-                if matched[1] in params:
-                    val = params[matched[1]]
-                    if isinstance(val, SQLVar):
-                        tokens.append(val)
-                    else:
-                        tokens.append(SQLVar(val))
-                else:
-                    raise Exception(f"Parameter '{matched[1]}' not provided")
-            else:
-                tokens.append(SQLText(word))
-
-        return SQLFragment(tokens)
-
-    def build_sql(self) -> tuple[str, list]:
-        strings = []
-        params = []
-        vars: dict[SQLVar, int] = {}
-
-        for token in self:
-            if isinstance(token, SQLText):
-                strings.append(token.text)
-            elif isinstance(token, SQLVar):
-                if token not in vars:
-                    vars[token] = len(vars) + 1
-                    params.append(token.value)
-                if token.type:
-                    strings.append(f"${vars[token]}::{token.type}")
-                else:
-                    strings.append(f"${vars[token]}")
-
-        return "".join(strings), params
-
-    def alias(self, alias: str):
-        return SQLFragment.concat(self, SQLText("AS"), SQLText.quote(alias))
-
-    @classmethod
-    def qn(cls, prefix: str, name: str):
-        return SQLFragment((SQLText.quote(prefix), SQLText.dot, SQLText.quote(name)))
-
-    @classmethod
-    def join(cls, sep: SQLText, fragments: "Iterable[SQLFragment | SQLText | SQLVar]"):
-        elements = list[SQLFragment | SQLText | SQLVar]()
-        for i, f in enumerate(fragments):
-            if i:
-                elements.append(sep)
-            elements.append(f)
-        return SQLFragment(elements)
-
-    @classmethod
-    def list(cls, fragments: "Iterable[SQLFragment | SQLText | SQLVar]"):
-        return SQLFragment.join(SQLText.comma, fragments)
-
-    @classmethod
-    def variadic(cls, fragments: "Sequence[SQLFragment | SQLText | SQLVar]"):
-        if len(fragments) == 1:
-            return fragments[0]
-        return SQLFragment.paren(SQLFragment.list(fragments))
-
-    @classmethod
-    def concat(cls, *fragments: "SQLFragment | SQLText | SQLVar"):
-        return SQLFragment.join(SQLText.space, fragments)
-
-    @classmethod
-    def paren(cls, fragment: "SQLFragment | SQLText | SQLVar"):
-        return SQLFragment((SQLText.lparen, fragment, SQLText.rparen))
-
-    @classmethod
-    def func_call(cls, name: str, args: "Iterable[SQLFragment | SQLText | SQLVar]"):
-        return SQLFragment((SQLText(name), SQLText.lparen, SQLFragment.join(SQLText.comma, args), SQLText.rparen))
-
-
-class SelectOperation(typing.NamedTuple):
-    table: Table
-    select: Sequence[Column]
-    where: Sequence[Column]
-    values: Sequence[Rec]
-
-
-class InsertOperation(typing.NamedTuple):
-    table: Table
-    returning_cols: Sequence[Column]
-    insert_cols: Sequence[Column]
-    values: Sequence[Rec]
-
-
-class UpdateOperation(typing.NamedTuple):
-    table: Table
-    where_cols: list[Column]
-    update_cols: list[Column]
-    returning_cols: list[Column]
-    values: list[Rec]
-
-
-class DeleteOperation(typing.NamedTuple):
-    table: Table
-    key_cols: Sequence[Column]
-    values: Sequence[Rec]
+Rec = dict[str, PostgresCodable]
 
 
 class Field:
@@ -199,11 +38,11 @@ class Field:
         self.column = column
         self.primary = is_primary
 
-    def read_partial(self, entity: Entity):
-        return self.to_partial(self.get_from_entity(entity))
+    def write_to_entity(self, entity: Entity, partial: Rec):
+        self.set_to_entity(entity, partial[self.column.name])
 
-    def write_partial(self, entity: Entity, partial: Rec):
-        self.set_to_entity(entity, self.from_partial(partial))
+    def write_to_record(self, entity: Entity, partial: Rec):
+        partial[self.column.name] = self.get_from_entity(entity)
 
     def get_from_entity(self, entity: Entity):
         return getattr(entity, self.name)
@@ -211,27 +50,27 @@ class Field:
     def set_to_entity(self, entity: Entity, value: PostgresCodable):
         setattr(entity, self.name, value)
 
-    def to_partial(self, value: PostgresCodable) -> Rec:  # TODO: write to partial
-        return {self.column: value}
+    def to_partial(self, value: PostgresCodable) -> Rec:
+        return {self.column.name: value}
 
-    def from_partial(self, partial: Rec) -> PostgresCodable:  # TODO: read from partial
-        return partial[self.column]
+    def from_partial(self, partial: Rec) -> PostgresCodable:
+        return partial[self.column.name]
 
     def __repr__(self) -> str:
         return f"Field({self.name!r}: {self.column.name!r}, primary={self.primary})"
 
 
 class Key(typing.Protocol):
-    columns: Sequence[Column]
+    columns: dict[str, Column]
 
-    def from_partial(self, partial: Rec) -> KeyValue: ...  # TODO: read from record
-    def to_partial(self, value: KeyValue) -> Rec: ...  # TODO: write to record
+    def from_partial(self, partial: Rec) -> KeyValue: ...
+    def to_partial(self, value: KeyValue) -> Rec: ...
 
 
 class SimpleKey(Key):
     def __init__(self, field: Field):
         self.field = field
-        self.columns = [field.column]
+        self.columns = {field.column.name: field.column}
 
     def from_partial(self, partial: Rec) -> KeyValue:
         return self.field.from_partial(partial)
@@ -246,7 +85,7 @@ class SimpleKey(Key):
 class CompositeKey(Key):
     def __init__(self, fields: Sequence[Field]):
         self.fields = fields
-        self.columns = [field.column for field in fields]
+        self.columns = {f.column.name: f.column for f in fields}
 
     def from_partial(self, partial: Rec) -> KeyValue:
         return tuple(field.from_partial(partial) for field in self.fields)
@@ -254,7 +93,7 @@ class CompositeKey(Key):
     def to_partial(self, value: KeyValue) -> Rec:
         assert isinstance(value, tuple)
         partial = {}
-        for field, val in zip(self.fields, value):
+        for field, val in zip(self.fields, value or ()):
             partial.update(field.to_partial(val))
         return partial
 
@@ -262,9 +101,12 @@ class CompositeKey(Key):
         return tuple(field.get_from_entity(entity) for field in self.fields)
 
 
+PrimaryKey = SimpleKey | CompositeKey
+
+
 class ParentalKey(Key):
     def __init__(self, columns: Sequence[Column], parent_key: Key):
-        self.columns = columns
+        self.columns = {c.name: c for c in columns}
         self._parent_key = parent_key
 
     def from_partial(self, partial: Rec) -> KeyValue:
@@ -277,71 +119,67 @@ class ParentalKey(Key):
 
 
 class Child:
-    def __init__(
-        self,
-        name: str,
-        mapping: typing.Callable[..., "EntityMapping"],
-        *columns: Column,
-    ):
+    def __init__(self, name: str, mapping: typing.Callable[..., "EntityMapping"], *columns: Column):
         self.name = name
-        self.columns = columns
         self._mapping = mapping
+        self._columns = columns
 
-    def get(self, entity: Entity) -> Sequence[Entity]: ...
-    def set(self, entity: Entity, values: list[Entity]): ...
+    def get_entity_attribute(self, entity: Entity) -> Sequence[Entity]: ...
+    def set_entity_attribute(self, entity: Entity, values: list[Entity]): ...
 
-    @functools.cached_property
-    def mapping(self) -> "EntityMapping":
+    def get_mapping(self) -> "EntityMapping":
         return self._mapping()
 
     def parental_key(self, parent_key: Key) -> ParentalKey:
-        return ParentalKey(self.columns, parent_key)
+        return ParentalKey(self._columns, parent_key)
+
+    def get_columns(self):
+        return {c.name: c for c in self._columns}
 
 
 class Plural(Child):
-    def get(self, entity: Entity) -> Sequence[Entity]:
+    def get_entity_attribute(self, entity: Entity) -> Sequence[Entity]:
         val = getattr(entity, self.name)
         return tuple(val) if val else ()
 
-    def set(self, entity: Entity, values: Sequence[Entity]):
+    def set_entity_attribute(self, entity: Entity, values: Sequence[Entity]):
         setattr(entity, self.name, list(values))
 
 
 class Singular(Child):
-    def get(self, entity: Entity) -> Sequence[Entity]:
+    def get_entity_attribute(self, entity: Entity) -> Sequence[Entity]:
         val = getattr(entity, self.name)
         return (val,) if val else ()
 
-    def set(self, entity: Entity, values: Sequence[Entity]):
+    def set_entity_attribute(self, entity: Entity, values: Sequence[Entity]):
         setattr(entity, self.name, values[0] if len(values) else None)
 
 
 class EntityMapping:
     def __init__(
         self,
-        entity: Type[Entity],
+        object_type: Type[Entity],
         table: Table,
-        fields: list[Field] = [],
-        children: list[Child] = [],
+        fields: list[Field],
+        children: list[Child],
+        primary_key: PrimaryKey,
     ):
-        self.object_type = entity
+        self.object_type = object_type
         self.table = table
         self.fields = fields
         self.children = children
+        self.primary_key = primary_key
 
-        self._primary_fields = [f for f in self.fields if f.primary]
-        if len(self._primary_fields) > 1:
-            self.primary_key = CompositeKey(self._primary_fields)
-        elif len(self._primary_fields) == 1:
-            self.primary_key = SimpleKey(self._primary_fields[0])
+    @classmethod
+    def define(cls, entity: Type[Entity], table: Table, fields: list[Field] = [], children: list[Child] = []):
+        primary_fields = [f for f in fields if f.primary]
+        if len(primary_fields) > 1:
+            primary_key = CompositeKey(primary_fields)
+        elif len(primary_fields) == 1:
+            primary_key = SimpleKey(primary_fields[0])
         else:
             raise Exception(f"No primary key defined: {entity.__name__}")
-
-        self._mapped_properties = {
-            **{f.name: f for f in self.fields},
-            **{c.name: c for c in self.children},
-        }
-        self._field_columns = {f.column for f in self.fields}
+        return cls(entity, table, fields, children, primary_key)
 
     def identify_entity(self, entity: Entity) -> KeyValue:
         return self.primary_key.get_from_entity(entity)
@@ -352,159 +190,37 @@ class EntityMapping:
     def create_object(self) -> object:
         return object.__new__(self.object_type)
 
-    def create_select_operation(self, key: Key, key_values: Collection[KeyValue]):
-        select_cols = self._collect_columns(*self._field_columns, *key.columns)
-        where_cols = key.columns
-        values = [key.to_partial(val) for val in key_values]
-
-        return SelectOperation(self.table, select_cols, where_cols, values)
-
-    def create_insert_operation(self, key: Key, entities: Collection[tuple[KeyValue, Entity]]):
-        select_cols = self._collect_columns(*self._field_columns, *key.columns)
-        insert_cols = [col for col in select_cols if col.updatable]
-        values = [{**self._read_to_record(ent), **key.to_partial(val)} for val, ent in entities]
-
-        return InsertOperation(self.table, select_cols, insert_cols, values)
-
-    def create_update_operation(self, key: Key, entities: Collection[tuple[KeyValue, Entity]]):
-        where_cols = self._collect_columns(*key.columns, *self.primary_key.columns)
-        returning_cols = self._collect_columns(*where_cols, *self._field_columns)
-        update_cols = [col for col in returning_cols if col.updatable and col not in where_cols]
-        values = [{**self._read_to_record(ent), **key.to_partial(val)} for val, ent in entities]
-
-        return UpdateOperation(self.table, where_cols, update_cols, returning_cols, values)
-
-    def create_delete_operation(self, key: Key, key_values: Collection[KeyValue]):
-        where_cols = key.columns
-        values = [key.to_partial(val) for val in key_values]
-
-        return DeleteOperation(self.table, where_cols, values)
-
     def write_record(self, entity: Entity, full: Rec):
         for f in self.fields:
-            f.write_partial(entity, full)
+            f.write_to_entity(entity, full)
 
-    def _read_to_record(self, entity: Entity) -> Rec:
+    def to_record(self, entity: Entity) -> Rec:
         full: Rec = {}
         for f in self.fields:
-            full.update(f.read_partial(entity))
+            f.write_to_record(entity, full)
         return full
 
-    def _collect_columns(self, *columns: Column):
-        return list(dict.fromkeys(c for c in columns))
+    @property
+    def columns(self):
+        return {f.column.name: f.column for f in self.fields}
 
 
-class SessionBackend:
-    def __init__(self, conn: asyncpg.Connection | asyncpg.pool.Pool):
-        self._conn = conn
+# sessions
 
-    async def select_by_keys(self, op: SelectOperation) -> list[Rec]:
-        if not op.values:
-            return []
 
-        frag = SQLFragment.concat(
-            SQLText("SELECT"),
-            SQLFragment.list(SQLFragment.qn("t", col.name) for col in op.select),
-            SQLText("FROM"),
-            SQLFragment.qn(op.table._schema, op.table._name),
-            SQLText("t"),
-            SQLText("JOIN"),
-            SQLFragment.func_call(
-                "UNNEST",
-                (SQLVar([rec[c] for rec in op.values], type=c.type + "[]") for c in op.where),
-            ),
-            SQLFragment.func_call("v", (SQLText.quote(c.name) for c in op.where)),
-            SQLText("USING"),
-            SQLFragment.paren(SQLFragment.list(SQLText.quote(c.name) for c in op.where)),
-        )
-        records = await self.fetch(*frag.build_sql())
-        return [dict(zip(op.select, record)) for record in records]
-
-    async def insert_records(self, op: InsertOperation) -> list[Rec]:
-        if not op.values:
-            return []
-
-        frag = SQLFragment.concat(
-            SQLText("INSERT INTO"),
-            SQLFragment.qn(op.table._schema, op.table._name),
-            SQLText("AS t"),
-            SQLFragment.paren(SQLFragment.list(SQLText.quote(c.name) for c in op.insert_cols)),
-            SQLText("SELECT"),
-            SQLFragment.list(
-                SQLFragment.func_call("COALESCE", (SQLFragment.qn("v", c.name), SQLText(c.default or "NULL")))
-                for c in op.insert_cols
-            ),
-            SQLText("FROM"),
-            SQLFragment.func_call(
-                "UNNEST",
-                (SQLVar([rec[c] for rec in op.values], type=c.type + "[]") for c in op.insert_cols),
-            ),
-            SQLFragment.func_call("v", (SQLText.quote(c.name) for c in op.insert_cols)),
-            SQLText("RETURNING"),
-            SQLFragment.list(SQLFragment.qn("t", c.name) for c in op.returning_cols),
-        )
-        records = await self.fetch(*frag.build_sql())
-        return [dict(zip(op.returning_cols, record)) for record in records]
-
-    async def update_records(self, op: UpdateOperation) -> list[Rec]:
-        if not op.values:
-            return []
-        all_columns = [*op.where_cols, *op.update_cols]
-        frag = SQLFragment.concat(
-            SQLText("UPDATE"),
-            SQLFragment.qn(op.table._schema, op.table._name),
-            SQLText("t"),
-            SQLText("SET"),
-            SQLFragment.concat(
-                SQLFragment.variadic([SQLText.quote(c.name) for c in op.update_cols]),
-                SQLText("="),
-                SQLFragment.variadic([SQLFragment.qn("v", c.name) for c in op.update_cols]),
-            ),
-            SQLText("FROM"),
-            SQLFragment.func_call(
-                "UNNEST",
-                (SQLVar([rec[c] for rec in op.values], type=c.type + "[]") for c in all_columns),
-            ),
-            SQLFragment.func_call("v", (SQLText.quote(c.name) for c in all_columns)),
-            SQLText("WHERE"),
-            SQLFragment.concat(
-                SQLFragment.variadic([SQLFragment.qn("t", c.name) for c in op.where_cols]),
-                SQLText("="),
-                SQLFragment.variadic([SQLFragment.qn("v", c.name) for c in op.where_cols]),
-            ),
-            SQLText("RETURNING"),
-            SQLFragment.list(SQLFragment.qn("t", c.name) for c in op.returning_cols),
-        )
-
-        records = await self.fetch(*frag.build_sql())
-        return [dict(zip(op.returning_cols, record)) for record in records]
-
-    async def delete_by_keys(self, op: DeleteOperation):
-        if not op.values:
-            return []
-
-        frag = SQLFragment.concat(
-            SQLText("DELETE FROM"),
-            SQLFragment.qn(op.table._schema, op.table._name),
-            SQLText("t"),
-            SQLText("USING"),
-            SQLFragment.func_call(
-                "UNNEST",
-                (SQLVar([rec[c] for rec in op.values], type=c.type + "[]") for c in op.key_cols),
-            ),
-            SQLFragment.func_call("v", (SQLText.quote(c.name) for c in op.key_cols)),
-            SQLText("WHERE"),
-            SQLFragment.concat(
-                SQLFragment.variadic([SQLFragment.qn("t", c.name) for c in op.key_cols]),
-                SQLText("="),
-                SQLFragment.variadic([SQLFragment.qn("v", c.name) for c in op.key_cols]),
-            ),
-        )
-
-        await self.fetch(*frag.build_sql())
-
-    async def fetch(self, query: str, params: Sequence[PostgresCodable]) -> list[typing.Mapping[str, PostgresCodable]]:
-        return await self._conn.fetch(query, *params)
+class SessionBackend(typing.Protocol):
+    async def select_by_keys(self, mapping: EntityMapping, key: Key, key_values: Collection[KeyValue]) -> list[Rec]: ...
+    async def insert_records(
+        self, mapping: EntityMapping, key: Key, entities: Collection[tuple[KeyValue, Entity]]
+    ) -> list[Rec]: ...
+    async def update_records(
+        self, mapping: EntityMapping, key: Key, values: Collection[tuple[KeyValue, Entity]]
+    ) -> list[Rec]: ...
+    async def delete_by_keys(self, mapping: EntityMapping, key: Key, key_values: Collection[KeyValue]): ...
+    async def fetch(self, query: str, *params: PostgresCodable) -> list[Rec]: ...
+    async def fetch_structured_query(self, query: "StructuredQuery", limit: int | None, offset: int) -> list[Rec]: ...
+    async def count_structured_query(self, query: "StructuredQuery") -> int: ...
+    async def fetch_raw_query(self, query: "SQLFragment") -> list[Rec]: ...
 
 
 entity_mapping_registry: dict[type, EntityMapping] = {}
@@ -562,19 +278,14 @@ class Session:
         await self._delete_by_key(mapping, mapping.primary_key, ids)
         self._untrack(mapping, ids)
 
-    # def select(self, *columns: str):
-    #     return SessionBoundSelectQuery(self, columns)
-
-    def find(self, entity_type: Type[TEntity], alias: str):
-        mapping = self.mappings[entity_type]
-        return SessionBoundFindQuery[TEntity](self, entity_type, alias)
+    def query(self, entity_type: Type[TEntity], alias: str):
+        return SessionEntityQuery[TEntity](self, entity_type, alias)
 
     def raw(self, query: str, **params):
-        return SessionBoundRawQuery(self, query, params)
+        return SessionRawQuery(self, query, params)
 
     async def _get_by_key(self, mapping: EntityMapping, key: Key, values: Collection[KeyValue]):
-        op = mapping.create_select_operation(key, values)
-        records = await self._backend.select_by_keys(op)
+        records = await self._backend.select_by_keys(mapping, key, values)
         record_map = {mapping.identify_record(rec): rec for rec in records}
 
         found = dict[KeyValue, Entity]()
@@ -586,26 +297,21 @@ class Session:
         for child in mapping.children:
             child_entities = {parent_key: list[Entity]() for parent_key in found}
             children_found = await self._get_by_key(
-                child.mapping, child.parental_key(mapping.primary_key), child_entities
+                child.get_mapping(), child.parental_key(mapping.primary_key), child_entities
             )
             for key_value, entity in children_found:
                 child_entities[key_value].append(entity)
 
             for parent_id in found:
-                child.set(found[parent_id], child_entities[parent_id])
+                child.set_entity_attribute(found[parent_id], child_entities[parent_id])
 
         return [(key.from_partial(full), found[id]) for id, full in record_map.items()]
 
-    async def _save_by_key(
-        self,
-        mapping: EntityMapping,
-        key: Key,
-        key_entities: Collection[tuple[KeyValue, Entity]],
-    ):
+    async def _save_by_key(self, mapping: EntityMapping, key: Key, values: Collection[tuple[KeyValue, Entity]]):
         to_insert = list[tuple[KeyValue, Entity]]()
         to_update = list[tuple[KeyValue, Entity]]()
 
-        for value, entity in key_entities:
+        for value, entity in values:
             id = mapping.identify_entity(entity)
             if self._in_track(mapping, id):
                 to_update.append((value, entity))
@@ -614,12 +320,10 @@ class Session:
 
         pairs = list[tuple[Entity, Rec]]()
         if to_update:
-            update_op = mapping.create_update_operation(key, to_update)
-            updated = await self._backend.update_records(update_op)
+            updated = await self._backend.update_records(mapping, key, to_update)
             pairs.extend((e, v) for (_, e), v in zip(to_update, updated))
         if to_insert:
-            insert_op = mapping.create_insert_operation(key, to_insert)
-            inserted = await self._backend.insert_records(insert_op)
+            inserted = await self._backend.insert_records(mapping, key, to_insert)
             pairs.extend((e, v) for (_, e), v in zip(to_insert, inserted))
 
         saved = dict[KeyValue, Entity]()
@@ -630,21 +334,24 @@ class Session:
 
         for child in mapping.children:
             previous_ids = self._get_children_ids_in_track(child, saved)
-            new_ids = {child.mapping.identify_entity(c) for parent in saved.values() for c in child.get(parent)}
-            await self._delete_by_key(child.mapping, child.mapping.primary_key, previous_ids - new_ids)
+            new_ids = {
+                child.get_mapping().identify_entity(c)
+                for parent in saved.values()
+                for c in child.get_entity_attribute(parent)
+            }
+            await self._delete_by_key(child.get_mapping(), child.get_mapping().primary_key, previous_ids - new_ids)
 
-            to_save = [(pid, c) for pid, parent in saved.items() for c in child.get(parent)]
-            await self._save_by_key(child.mapping, child.parental_key(mapping.primary_key), to_save)
+            to_save = [(pid, c) for pid, parent in saved.items() for c in child.get_entity_attribute(parent)]
+            await self._save_by_key(child.get_mapping(), child.parental_key(mapping.primary_key), to_save)
 
-        return key_entities
+        return values
 
     async def _delete_by_key(self, mapping: EntityMapping, key: Key, ids: Collection[KeyValue]):
         for child in mapping.children:
             child_ids = self._get_children_ids_in_track(child, ids)
-            await self._delete_by_key(child.mapping, child.mapping.primary_key, child_ids)
+            await self._delete_by_key(child.get_mapping(), child.get_mapping().primary_key, child_ids)
 
-        delete_op = mapping.create_delete_operation(key, ids)
-        await self._backend.delete_by_keys(delete_op)
+        await self._backend.delete_by_keys(mapping, key, ids)
 
     def _track(self, mapping: EntityMapping, entities: Collection[Entity]):
         entity_map = {mapping.identify_entity(entity): entity for entity in entities}
@@ -656,20 +363,20 @@ class Session:
             new_ids = set[KeyValue]()
 
             for id, entity in entity_map.items():
-                child_entities = child.get(entity)
-                child_ids = {child.mapping.identify_entity(child_obj) for child_obj in child_entities}
+                child_entities = child.get_entity_attribute(entity)
+                child_ids = {child.get_mapping().identify_entity(child_obj) for child_obj in child_entities}
 
                 self._children_map[(child, id)] = child_ids
-                self._track(child.mapping, child_entities)
+                self._track(child.get_mapping(), child_entities)
                 new_ids.update(child_ids)
 
             previous_ids = self._get_children_ids_in_track(child, entity_map)
-            self._untrack(child.mapping, previous_ids - new_ids)
+            self._untrack(child.get_mapping(), previous_ids - new_ids)
 
     def _untrack(self, mapping: EntityMapping, ids: Collection[KeyValue]):
         for child in mapping.children:
             child_ids = self._get_children_ids_in_track(child, ids)
-            self._untrack(child.mapping, child_ids)
+            self._untrack(child.get_mapping(), child_ids)
             for id in ids:
                 del self._children_map[(child, id)]
 
@@ -686,306 +393,133 @@ class Session:
         return {child_id for id in ids for child_id in self._children_map.get((child, id), ())}
 
 
-class SessionBoundFindQuery(typing.Generic[TEntity]):
-    class Sort(typing.NamedTuple):
-        column: str
+# SQL Object Model
+
+
+class SQLText(typing.NamedTuple):
+    text: str
+
+
+class SQLVar(typing.NamedTuple):
+    value: PostgresCodable
+    type: str | None
+
+
+class SQLName(typing.NamedTuple):
+    prefix: str | None
+    name: str
+
+
+class SQLFragment:
+    def __init__(self, *elements: "SQLFragmentElement"):
+        self._elements = elements
+
+    _patt_word = re.compile(r"('[^']*'|\"[^\"]*\"|\s+|::|:\w+|\w+|[^\w\s])")
+    _patt_param = re.compile(r":(\w+)")
+
+    @classmethod
+    def parse(cls, sql: str, params: dict[str, SQLVar | PostgresCodable]):
+        tokens = list[SQLText | SQLVar]()
+        words: list[str] = cls._patt_word.findall(sql)
+
+        for word in words:
+            if matched := cls._patt_param.match(word):
+                if matched[1] in params:
+                    val = params[matched[1]]
+                    if isinstance(val, SQLVar):
+                        tokens.append(val)
+                    else:
+                        tokens.append(SQLVar(val, None))
+                else:
+                    raise Exception(f"Parameter '{matched[1]}' not provided")
+            else:
+                tokens.append(SQLText(word))
+
+        return cls(*tokens)
+
+
+SQLFragmentElement = SQLText | SQLVar | SQLName | SQLFragment
+
+
+class StructuredQuery(typing.NamedTuple):
+    JoinType = typing.Literal["JOIN", "LEFT JOIN"]
+
+    class Join(typing.NamedTuple):
+        type: "StructuredQuery.JoinType"
+        target: SQLFragment
+        alias: str
+        on: SQLFragment
+
+    class OrderByOption(typing.NamedTuple):
+        expr: SQLFragment
         ascending: bool
+        nulls_last: bool
 
-    def __init__(self, session: "Session", type: Type[Entity], alias: str):
+    mapping: EntityMapping
+    alias: str
+    joins: dict[str, Join]
+    filter_conds: list[SQLFragment]
+    order_by_options: list[OrderByOption] = []
+
+
+class SessionEntityQuery(typing.Generic[TEntity]):
+    def __init__(self, session: "Session", entity_type: type, alias: str):
         self._session = session
-        self._alias = alias
-        self._mapping = session.mappings[type]
+        self._mapping = session.mappings[entity_type]
+        self._query = StructuredQuery(mapping=self._mapping, alias=alias, joins={}, filter_conds=[])
 
-        self._joins = {}
-        self._filters = list[SQLFragment]()
-        self._default_sort = [self.asc(col.name) for col in self._mapping.primary_key.columns]
+    def join(self, target: type | str, alias: str, on: SQLFragment, **params):
+        self._query.joins[alias] = StructuredQuery.Join("JOIN", self._get_target(target, params), alias, on)
+        return self
 
-    def join(self, target: Type[Entity] | str, alias: str, condition: str, **params):
-        return self._join("JOIN", target, alias, condition, **params)
-
-    def left_join(self, target: Type[Entity] | str, alias: str, condition: str, **params):
-        return self._join("LEFT JOIN", target, alias, condition, **params)
-
-    def _join(self, join_type: str, target: Type[Entity] | str, alias: str, condition: str, **params):
-        if isinstance(target, type):
-            table = self._session.mappings[target].table
-            target_qn = SQLFragment.qn(table._schema, table._name)
-        else:
-            target_qn = SQLText(target)
-
-        self._joins[alias] = (join_type, target_qn, SQLFragment.parse(condition, params))
+    def left_join(self, target: type | str, alias: str, on: SQLFragment, **params):
+        self._query.joins[alias] = StructuredQuery.Join("LEFT JOIN", self._get_target(target, params), alias, on)
         return self
 
     def filter(self, condition: str, **params):
-        self._filters.append(SQLFragment.parse(condition, params))
+        self._query.filter_conds.append(SQLFragment.parse(condition, params))
         return self
 
-    @classmethod
-    def asc(cls, column: str):
-        return cls.Sort(column, True)
+    def order_by(self, *options: StructuredQuery.OrderByOption):
+        self._query.order_by_options.clear()
+        self._query.order_by_options.extend(options)
+        return self
 
-    @classmethod
-    def desc(cls, column: str):
-        return cls.Sort(column, False)
-
-    async def fetch(
-        self,
-        first: int | None = None,
-        after: KeyValue | None = None,
-        last: int | None = None,
-        before: KeyValue | None = None,
-        offset: int = 0,
-        sort: Sequence[Sort] | None = None,
-    ):
-        cursor_fetch_results = await self.fetch_ids(first, after, last, before, offset, sort)
-        objects = await self._session.batch_get(self._mapping.object_type, cursor_fetch_results)
-        return FetchResult(
-            elements=typing.cast(list[TEntity], objects),
-            has_next_page=cursor_fetch_results.has_next_page,
-            has_previous_page=cursor_fetch_results.has_previous_page,
-            start_cursor=cursor_fetch_results.start_cursor,
-            end_cursor=cursor_fetch_results.end_cursor,
-        )
-
-    async def fetch_one(self):
-        results = await self.fetch(first=1)
-        return results[0] if results else None
-
-    async def fetch_ids(
-        self,
-        first: int | None = None,
-        after: KeyValue | None = None,
-        last: int | None = None,
-        before: KeyValue | None = None,
-        offset: int = 0,
-        sort: Sequence[Sort] | None = None,
-    ):
-        count = first or last
-        cursor = after or before
-        is_forward = isinstance(first, int)
-
-        assert count, 'Either "first" or "last" must be present'
-        assert not (first and last), 'Argument "first" and "last" must not be present at the same time'
-        assert not (after and before), 'Argument "after" and "before" must not be present at the same time'
-        assert not (first and before), 'Argument "first" and "before" must not be present at the same time'
-        assert not (last and after), 'Argument "last" and "after" must not be present at the same time'
-        assert first is None or first >= 0, 'Argument "first" cannot be a negative number'
-        assert last is None or last >= 0, 'Argument "last" cannot be a negative number'
-
-        primary_columns = self._mapping.primary_key.columns
-        fragment = self._format_pagination_frag(
-            is_forward,
-            count,
-            cursor,
-            offset,
-            sort or self._default_sort,
-        )
-        results = await self._session._backend.fetch(*fragment.build_sql())
-
-        partials = [dict(zip(primary_columns, record)) for record in results]
-        ids = [self._mapping.primary_key.from_partial(rec) for rec in partials]
-
-        has_cursor_side_edge = (ids[0] if ids else None) == cursor
-        if has_cursor_side_edge:
-            ids = ids[1:]
-        has_extra_edge = len(ids) > count
-        if has_extra_edge:
-            ids = ids[:count]
-
-        start_cursor = ids[0] if ids else None
-        end_cursor = ids[-1] if ids else None
-
-        if is_forward:
-            return FetchResult(
-                elements=ids,
-                has_next_page=has_extra_edge,
-                has_previous_page=has_cursor_side_edge,
-                start_cursor=start_cursor,
-                end_cursor=end_cursor,
-            )
-        else:
-            return FetchResult(
-                elements=ids[::-1],
-                has_next_page=has_cursor_side_edge,
-                has_previous_page=has_extra_edge,
-                start_cursor=end_cursor,
-                end_cursor=start_cursor,
-            )
+    def _get_target(self, target: type | str, params: dict):
+        if isinstance(target, str):
+            return SQLFragment.parse(target, params)
+        target_mapping = self._session.mappings[target]
+        return SQLFragment(SQLName(prefix=target_mapping.table.schema, name=target_mapping.table.name))
 
     async def count(self):
-        primary_columns = self._mapping.primary_key.columns
+        return await self._session._backend.count_structured_query(self._query)
 
-        frag = SQLFragment.concat(
-            SQLText("SELECT"),
-            SQLFragment.func_call("COUNT", (SQLFragment.qn(self._alias, c.name) for c in primary_columns)),
-            self._format_from_where_frag(),
-        )
-        results = await self._session._backend.fetch(*frag.build_sql())
-        return int(results[0]["count"])
+    async def fetch(self, limit: int | None = None, offset: int = 0):
+        records = await self._session._backend.fetch_structured_query(self._query, limit, offset)
+        primary_key_values = [self._mapping.identify_record(rec) for rec in records]
+        entities = await self._session.batch_get(self._mapping.object_type, primary_key_values)
+        return typing.cast(list[TEntity], entities)
 
-    def _format_pagination_frag(
-        self,
-        is_forward: bool,
-        count: int,
-        cursor: KeyValue | None,
-        offset: int,
-        sort: Sequence[Sort],
-    ):
-        assert sort
-        primary_columns = self._mapping.primary_key.columns
-        cursor_partial = self._mapping.primary_key.to_partial(cursor)
+    async def fetch_one(self):
+        results = await self.fetch()
+        return results[0] if results else None
 
-        return SQLFragment.concat(
-            SQLFragment(
-                (
-                    SQLText("WITH to_find AS NOT MATERIALIZED "),
-                    SQLFragment.paren(
-                        SQLFragment.concat(
-                            SQLText("SELECT"),
-                            SQLFragment.list(
-                                (
-                                    *(
-                                        SQLFragment.concat(
-                                            SQLFragment.qn(self._alias, c.name), SQLText("AS"), SQLText(f"c{i}")
-                                        )
-                                        for i, c in enumerate(primary_columns)
-                                    ),
-                                    *(SQLText(f"{col} AS s{i}") for i, (col, _) in enumerate(sort)),
-                                )
-                            ),
-                            self._format_from_where_frag(),
-                            SQLText("GROUP BY"),
-                            SQLFragment.list(
-                                SQLFragment.concat(SQLFragment.qn(self._alias, c.name))
-                                for i, c in enumerate(primary_columns)
-                            ),
-                        )
-                    ),
-                    SQLText.comma,
-                    SQLText("cursor_edge AS "),
-                    SQLFragment.paren(
-                        SQLFragment.concat(
-                            SQLText("SELECT"),
-                            SQLFragment.list(
-                                (
-                                    *(SQLText(f"c{i}") for i, _ in enumerate(primary_columns)),
-                                    *(SQLText(f"s{i}") for i, _ in enumerate(sort)),
-                                )
-                            ),
-                            SQLText("FROM to_find"),
-                            SQLText("WHERE"),
-                            SQLFragment.join(
-                                SQLText(" AND "),
-                                (
-                                    SQLFragment.parse(f"c{i} = :value", {"value": cursor_partial[c]})
-                                    for i, c in enumerate(primary_columns)
-                                ),
-                            ),
-                        )
-                    ),
-                )
-            ),
-            SQLText("SELECT"),
-            SQLFragment.list(
-                SQLFragment.concat(SQLFragment.qn("t1", f"c{i}"), SQLText("AS"), SQLText.quote(c.name))
-                for i, c in enumerate(primary_columns)
-            ),
-            SQLText("FROM to_find t1 LEFT JOIN cursor_edge t2 ON TRUE"),
-            SQLText("WHERE"),
-            SQLFragment.func_call(
-                "COALESCE",
-                (
-                    SQLFragment.join(
-                        SQLText(" OR "),
-                        (
-                            SQLFragment.paren(
-                                SQLFragment.join(
-                                    SQLText(" AND "),
-                                    (
-                                        (
-                                            SQLFragment.concat(
-                                                SQLText(f"t1.s{j}"),
-                                                SQLText(">") if is_forward == s.ascending else SQLText("<"),
-                                                SQLText(f"t2.s{j}"),
-                                            )
-                                            if i == j
-                                            else SQLText(f"t1.s{j} = t2.s{j}")
-                                        )
-                                        for j, s in enumerate(sort[: i + 1])
-                                    ),
-                                )
-                            )
-                            for i in range(len(sort) + 1)
-                        ),
-                    ),
-                    SQLText("TRUE"),
-                ),
-            ),
-            SQLText("ORDER BY"),
-            SQLFragment.list(
-                SQLFragment.concat(
-                    SQLFragment.qn("t1", f"s{i}"),
-                    SQLText("ASC") if is_forward == s.ascending else SQLText("DESC"),
-                )
-                for i, s in enumerate(sort)
-            ),
-            SQLText("LIMIT"),
-            SQLVar(count + 1),
-            SQLText("OFFSET"),
-            SQLVar(offset),
-        )
+    @classmethod
+    def asc(cls, expr: str, nulls_last=True, **params):
+        return StructuredQuery.OrderByOption(SQLFragment.parse(expr, params), True, nulls_last)
 
-    def _format_from_where_frag(self):
-        schema = self._mapping.table._schema
-        table = self._mapping.table._name
-
-        return SQLFragment.concat(
-            SQLText("FROM"),
-            SQLFragment.qn(schema, table),
-            SQLText("AS"),
-            SQLText.quote(self._alias),
-            *(
-                SQLFragment.concat(
-                    SQLText(f"{join}"),
-                    target,
-                    SQLText("AS"),
-                    SQLText.quote(alias),
-                    SQLText("ON"),
-                    condition,
-                )
-                for alias, (join, target, condition) in self._joins.items()
-            ),
-            SQLText("WHERE"),
-            SQLFragment.join(SQLText(" AND "), self._filters),
-        )
+    @classmethod
+    def desc(cls, expr: str, nulls_last=True, **params):
+        return StructuredQuery.OrderByOption(SQLFragment.parse(expr, params), False, nulls_last)
 
 
-T = typing.TypeVar("T")
-
-
-class FetchResult(list[T]):
-    def __init__(
-        self,
-        elements: Iterable[T],
-        has_next_page: bool,
-        has_previous_page: bool,
-        start_cursor: KeyValue | None,
-        end_cursor: KeyValue | None,
-    ):
-        super().__init__(elements)
-        self.has_next_page = has_next_page
-        self.has_previous_page = has_previous_page
-        self.start_cursor = start_cursor
-        self.end_cursor = end_cursor
-
-
-class SessionBoundRawQuery:
+class SessionRawQuery:
     def __init__(self, session: "Session", query: str, params: dict[str, PostgresCodable]):
         self._frag = SQLFragment.parse(query, params)
         self._session = session
 
     async def fetch(self):
-        return await self._session._backend.fetch(*self._frag.build_sql())
+        return await self._session._backend.fetch_raw_query(self._frag)
 
     async def fetch_one(self):
         results = await self.fetch()
@@ -1017,3 +551,189 @@ class ChildConfig(typing.TypedDict):
     kind: typing.Literal["singular", "plural"]
     columns: list[str]
     target: type
+
+
+# adapter
+
+
+class AsyncPGSessionBackend(SessionBackend):
+    def __init__(self, conn: asyncpg.Connection | asyncpg.pool.Pool):
+        self._conn = conn
+
+    async def select_by_keys(self, mapping: EntityMapping, key: Key, key_values: Collection[KeyValue]):
+        if not key_values:
+            return []
+
+        select = {**mapping.columns, **key.columns}
+        key_records = [key.to_partial(val) for val in key_values]
+
+        select_list = self._sql_l(self._sql_qn("t", name) for name in select)
+        vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(key.columns.values()))
+        join_cols = self._sql_l(self._sql_q(col) for col in key.columns)
+        from_table = self._sql_qn(mapping.table.schema, mapping.table.name)
+
+        query = f"SELECT {select_list} FROM {from_table} t JOIN UNNEST({vars}) v({join_cols}) USING ({join_cols});"
+        params = [[rec[n] for rec in key_records] for n in key.columns]
+        records = await self._conn.fetch(query, *params)
+        return [dict(zip(select, record)) for record in records]
+
+    async def insert_records(self, mapping: EntityMapping, key: Key, entities: Collection[tuple[KeyValue, Entity]]):
+        if not entities:
+            return []
+
+        cols = {**mapping.columns, **key.columns}
+        values = [{**key.to_partial(kv), **mapping.to_record(ev)} for kv, ev in entities]
+
+        insert_into = self._sql_qn(mapping.table.schema, mapping.table.name)
+        col_names = self._sql_l(self._sql_q(n) for n in cols)
+        returning_names = self._sql_l(self._sql_q(name) for name in cols)
+        vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(cols.values()))
+        selects = self._sql_l(f"COALESCE(v.{col.name}, {col.default or 'NULL'})" for col in cols.values())
+
+        query = f"INSERT INTO {insert_into} ({col_names}) SELECT {selects} FROM UNNEST({vars}) v({col_names}) RETURNING {returning_names};"
+        params = [[cvm[name] for cvm in values] for name in cols]
+        records = await self._conn.fetch(query, *params)
+
+        return [dict(zip(cols, record)) for record in records]
+
+    async def update_records(self, mapping: EntityMapping, key: Key, values: Collection[tuple[KeyValue, Entity]]):
+        if not values:
+            return []
+
+        key_columns = {**key.columns, **mapping.primary_key.columns}
+        set_columns = {k: v for k, v in mapping.columns.items() if k not in key_columns}
+        all_columns = {**set_columns, **key_columns}
+
+        update = self._sql_qn(mapping.table.schema, mapping.table.name)
+        set_left = self._sql_l(self._sql_q(name) for name in set_columns)
+        set_right = self._sql_l(self._sql_qn("v", name) for name in set_columns)
+        if len(set_columns) > 1:
+            set_left = f"({set_left})"
+            set_right = f"({set_right})"
+
+        vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(all_columns.values()))
+        var_colnames = self._sql_l(self._sql_q(name) for name in all_columns)
+
+        where_left = self._sql_l(self._sql_qn("t", name) for name in key_columns)
+        where_right = self._sql_l(self._sql_qn("v", name) for name in key_columns)
+        returning = self._sql_l(self._sql_qn("t", name) for name in all_columns)
+
+        records = [{**mapping.to_record(ev), **key.to_partial(kv)} for kv, ev in values]
+
+        query = (
+            f"UPDATE {update} t "
+            f"SET {set_left} = {set_right} "
+            f"FROM UNNEST({vars}) v({var_colnames}) "
+            f"WHERE ({where_left}) = ({where_right}) "
+            f"RETURNING {returning};"
+        )
+        params = [[cvm[i] for cvm in records] for i in all_columns]
+        records = await self._conn.fetch(query, *params)
+        return [dict(zip(all_columns, record)) for record in records]
+
+    async def delete_by_keys(self, mapping: EntityMapping, key: Key, key_values: Collection[KeyValue]):
+        if not key_values:
+            return
+
+        where_cols = key.columns
+
+        delete_from = self._sql_qn(mapping.table.schema, mapping.table.name)
+        vars = self._sql_l(f"${i + 1}::{col.type}[]" for i, col in enumerate(where_cols.values()))
+        var_colnames = self._sql_l(self._sql_q(name) for name in where_cols)
+
+        where_left = self._sql_l(self._sql_qn("t", name) for name in where_cols)
+        where_right = self._sql_l(self._sql_qn("v", name) for name in where_cols)
+
+        records = [key.to_partial(val) for val in key_values]
+
+        query = (
+            f"DELETE FROM {delete_from} t USING UNNEST({vars}) "
+            f"v({var_colnames}) WHERE ({where_left}) = ({where_right});"
+        )
+        params = [[cvm[i] for cvm in records] for i in where_cols]
+        await self._conn.fetch(query, *params)
+
+    async def fetch_structured_query(self, query: StructuredQuery, limit: int | None, offset: int) -> list[Rec]:
+        params = []
+
+        primary_col_names = [n for n in query.mapping.primary_key.columns]
+        select = self._sql_l(self._sql_qn(query.alias, n) for n in primary_col_names)
+        from_table = self._sql_qn(query.mapping.table.schema, query.mapping.table.name)
+        from_alias = self._sql_q(query.alias)
+        joins = self._sql_l(self._sql_join(join, params) for join in query.joins.values())
+        filters = self._sql_filter_conds(query.filter_conds, params)
+        order_by = self._sql_l(self._sql_order_by_option(option, params) for option in query.order_by_options)
+
+        params.append(limit)
+        limit_cluase = f"LIMIT ${len(params)}"
+        params.append(offset)
+        offset_clause = f"OFFSET ${len(params)}"
+
+        sql = (
+            f"SELECT {select} FROM {from_table} AS {from_alias} {joins} "
+            f"GROUP BY {select} HAVING {filters} ORDER BY {order_by} "
+            f"{limit_cluase} {offset_clause};"
+        )
+        records = await self._conn.fetch(sql, *params)
+        return [dict(zip(primary_col_names, record)) for record in records]
+
+    async def count_structured_query(self, query: StructuredQuery) -> int:
+        params = []
+
+        primary_key = query.mapping.primary_key
+        select = self._sql_l(self._sql_qn(query.alias, n) for n in primary_key.columns)
+        from_table = self._sql_qn(query.mapping.table.schema, query.mapping.table.name)
+        from_alias = self._sql_q(query.alias)
+        joins = self._sql_l(self._sql_join(join, params) for join in query.joins.values())
+        filters = self._sql_filter_conds(query.filter_conds, params)
+
+        sql = (
+            f"SELECT COUNT(*) FROM (SELECT {select} FROM {from_table} AS {from_alias} {joins} "
+            f"GROUP BY {select} HAVING {filters}) _;"
+        )
+        records = await self._conn.fetch(sql, *params)
+        return records[0][0]
+
+    async def fetch_raw_query(self, query: SQLFragment) -> list[Rec]:
+        params = []
+        sql = "".join(self._sql_element(el, params) for el in query._elements)
+        return await self._conn.fetch(sql, *params)
+
+    async def fetch(self, query: str, *params) -> list[Rec]:
+        return await self._conn.fetch(query, *params)
+
+    def _sql_l(self, items: typing.Iterable[str]):
+        return ", ".join(items)
+
+    def _sql_qn(self, prefix: str | None, name: str):
+        if prefix:
+            return self._sql_q(prefix) + "." + self._sql_q(name)
+        return self._sql_q(name)
+
+    def _sql_q(self, name: str):
+        return '"' + name.replace('"', '""') + '"'
+
+    def _sql_filter_conds(self, conds: list[SQLFragment], inout_params: list):
+        return " AND ".join(f"({self._sql_element(cond, inout_params)})" for cond in conds)
+
+    def _sql_join(self, join: StructuredQuery.Join, inout_params: list):
+        target_expr = self._sql_element(join.target, inout_params)
+        condition_expr = self._sql_element(join.on, inout_params)
+        return f"{join.type} {target_expr} ON {condition_expr}"
+
+    def _sql_order_by_option(self, option: StructuredQuery.OrderByOption, input_params: list):
+        expr = self._sql_element(option.expr, input_params)
+        direction = "ASC" if option.ascending else "DESC"
+        nulls = "NULLS LAST" if option.nulls_last else "NULLS FIRST"
+        return f"{expr} {direction} {nulls}"
+
+    def _sql_element(self, element: SQLFragmentElement, inout_params: list):
+        if isinstance(element, SQLText):
+            return element.text
+        elif isinstance(element, SQLVar):
+            inout_params.append(element.value)
+            return f"${len(inout_params)}::{element.type}" if element.type else f"${len(inout_params)}"
+        elif isinstance(element, SQLName):
+            return self._sql_qn(element.prefix, element.name)
+        elif isinstance(element, SQLFragment):
+            return "".join(self._sql_element(el, inout_params) for el in element._elements)
