@@ -3,7 +3,7 @@ from unittest import IsolatedAsyncioTestCase
 
 import asyncpg
 
-from orm1 import Session, SessionBackend
+from orm1 import Session, AsyncPGSessionBackend
 
 from . import database as _
 from .entities.course import Course, CourseAttachment, CourseModule, CourseModuleMaterial
@@ -69,7 +69,7 @@ class CompositeTest(IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         self._conn: asyncpg.Connection = await asyncpg.connect(self.dsn)
-        self._backend = SessionBackend(self._conn)
+        self._backend = AsyncPGSessionBackend(self._conn)
         self._tx = self._conn.transaction()
 
         session = Session(self._backend)

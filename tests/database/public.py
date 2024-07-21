@@ -5,8 +5,8 @@ from orm1 import Table, Column
 class _course_module_material(Table):
     def __init__(self):
         super().__init__('public', 'course_module_material')
-        self.id = Column("id", "varchar(20)", primary=True)
-        self.course_module_id = Column("course_module_id", "varchar(20)")
+        self.id = Column("id", "varchar", primary=True)
+        self.course_module_id = Column("course_module_id", "varchar")
         self.media_uri = Column("media_uri", "text")
         self.created_at = Column("created_at", "timestamp", default="now()")
 
@@ -14,7 +14,7 @@ class _purchase(Table):
     def __init__(self):
         super().__init__('public', 'purchase')
         self.id = Column("id", "uuid", default="uuid_generate_v4()", primary=True)
-        self.code = Column("code", "varchar(64)")
+        self.code = Column("code", "varchar")
         self.user_id = Column("user_id", "uuid")
         self.created_at = Column("created_at", "timestamp", default="now()")
         self.receipt = Column("receipt", "jsonb")
@@ -33,9 +33,9 @@ class _purchase_bank_transfer(Table):
         super().__init__('public', 'purchase_bank_transfer')
         self.id = Column("id", "uuid", default="uuid_generate_v4()", primary=True)
         self.purchase_id = Column("purchase_id", "uuid")
-        self.sender_name = Column("sender_name", "varchar(64)")
+        self.sender_name = Column("sender_name", "varchar")
         self.transfer_time = Column("transfer_time", "timestamp")
-        self.amount = Column("amount", "numeric(10,2)")
+        self.amount = Column("amount", "numeric")
         self.created_at = Column("created_at", "timestamp", default="now()")
 
 class _purchase_bank_transfer_attachment(Table):
@@ -57,26 +57,26 @@ class _purchase_coupon_usage(Table):
 class _course(Table):
     def __init__(self):
         super().__init__('public', 'course')
-        self.semester_id = Column("semester_id", "varchar(20)", primary=True)
-        self.subject_id = Column("subject_id", "varchar(20)", primary=True)
+        self.semester_id = Column("semester_id", "varchar", primary=True)
+        self.subject_id = Column("subject_id", "varchar", primary=True)
         self.created_at = Column("created_at", "timestamp", default="now()")
 
 class _course_attachment(Table):
     def __init__(self):
         super().__init__('public', 'course_attachment')
-        self.id = Column("id", "varchar(20)", primary=True)
-        self.course_semester_id = Column("course_semester_id", "varchar(20)")
-        self.course_subject_id = Column("course_subject_id", "varchar(20)")
+        self.id = Column("id", "varchar", primary=True)
+        self.course_semester_id = Column("course_semester_id", "varchar")
+        self.course_subject_id = Column("course_subject_id", "varchar")
         self.media_uri = Column("media_uri", "text")
         self.created_at = Column("created_at", "timestamp", default="now()")
 
 class _course_module(Table):
     def __init__(self):
         super().__init__('public', 'course_module')
-        self.id = Column("id", "varchar(20)", primary=True)
-        self.course_semester_id = Column("course_semester_id", "varchar(20)")
-        self.course_subject_id = Column("course_subject_id", "varchar(20)")
-        self.title = Column("title", "varchar(255)")
+        self.id = Column("id", "varchar", primary=True)
+        self.course_semester_id = Column("course_semester_id", "varchar")
+        self.course_subject_id = Column("course_subject_id", "varchar")
+        self.title = Column("title", "varchar")
         self.created_at = Column("created_at", "timestamp", default="now()")
 
 
