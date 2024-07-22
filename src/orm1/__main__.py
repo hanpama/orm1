@@ -211,7 +211,8 @@ async def _get_introspection(dsn: str, entities: typing.Iterable[EntityDefinitio
             n.nspname
                 AS name
         FROM pg_namespace n
-        WHERE n.nspname = ANY($1);
+        WHERE n.nspname = ANY($1)
+        ORDER BY n.nspname;
         """,
         list({name for name, _ in table_names}),
     )
@@ -234,7 +235,8 @@ async def _get_introspection(dsn: str, entities: typing.Iterable[EntityDefinitio
                 AS name
         FROM pg_class c
             JOIN pg_namespace nc ON nc.oid = c.relnamespace
-            JOIN UNNEST($1::TEXT[], $2::TEXT[]) k(s, t) ON nc.nspname = k.s AND c.relname = k.t;
+            JOIN UNNEST($1::TEXT[], $2::TEXT[]) k(s, t) ON nc.nspname = k.s AND c.relname = k.t
+        ORDER BY nc.nspname, c.relname;
         """,
         [schema for schema, _ in table_names],
         [table for _, table in table_names],
@@ -313,7 +315,7 @@ def _render_database_spec(introspection: Introspection, output):
             for table in schema.tables.values():
                 f.write(f"class _{table.name}(Table):\n")
                 f.write(f"    def __init__(self):\n")
-                f.write(f"        super().__init__('{table.schema}', '{table.name}')\n")
+                f.write(f"        super().__init__(\"{table.schema}\", \"{table.name}\")\n")
                 for column in table.columns.values():
                     field_args = [f'"{column.name}"', f'"{column.data_type}"']
                     if column.default:
@@ -325,7 +327,7 @@ def _render_database_spec(introspection: Introspection, output):
 
                     f.write(f'        self.{column.name} = Column({", ".join(field_args)})\n')
                 f.write("\n")
-            f.write("\n")
+                f.write("\n")
 
             for table in schema.tables.values():
                 f.write(f"{table.name} = _{table.name}()\n")
@@ -333,7 +335,7 @@ def _render_database_spec(introspection: Introspection, output):
             f.write("\n")
             f.write("__all__ = [\n")
             for table in schema.tables.values():
-                f.write(f"    '{table.name}',\n")
+                f.write(f"    \"{table.name}\",\n")
             f.write("]\n")
 
 

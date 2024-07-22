@@ -29,6 +29,7 @@ Entity = object
 KeyValue = typing.Hashable
 PostgresCodable = typing.Any
 Rec = dict[str, PostgresCodable]
+EntityFactory = typing.Callable[[], Entity]
 
 
 class Field:
@@ -157,20 +158,29 @@ class Singular(Child):
 class EntityMapping:
     def __init__(
         self,
-        object_type: Type[Entity],
+        entity_type: Type[Entity],
         table: Table,
         fields: list[Field],
         children: list[Child],
         primary_key: PrimaryKey,
+        entity_factory: EntityFactory,
     ):
-        self.object_type = object_type
+        self.entity_type = entity_type
         self.table = table
         self.fields = fields
         self.children = children
         self.primary_key = primary_key
+        self.entity_factory = entity_factory
 
     @classmethod
-    def define(cls, entity: Type[Entity], table: Table, fields: list[Field] = [], children: list[Child] = []):
+    def define(
+        cls,
+        entity: Type[Entity],
+        table: Table,
+        fields: list[Field] = [],
+        children: list[Child] = [],
+        entity_factory: EntityFactory | None = None,
+    ):
         primary_fields = [f for f in fields if f.primary]
         if len(primary_fields) > 1:
             primary_key = CompositeKey(primary_fields)
@@ -178,16 +188,21 @@ class EntityMapping:
             primary_key = SimpleKey(primary_fields[0])
         else:
             raise Exception(f"No primary key defined: {entity.__name__}")
-        return cls(entity, table, fields, children, primary_key)
+
+        if not entity_factory:
+            entity_factory = cls.default_factory(entity)
+
+        return cls(entity, table, fields, children, primary_key, entity_factory)
+
+    @classmethod
+    def default_factory(cls, entity_type: Type[Entity]):
+        return lambda: object.__new__(entity_type)
 
     def identify_entity(self, entity: Entity) -> KeyValue:
         return self.primary_key.get_from_entity(entity)
 
     def identify_record(self, full: Rec) -> KeyValue:
         return self.primary_key.from_partial(full)
-
-    def create_object(self) -> object:
-        return object.__new__(self.object_type)
 
     def write_record(self, entity: Entity, full: Rec):
         for f in self.fields:
@@ -226,7 +241,7 @@ entity_mapping_registry: dict[type, EntityMapping] = {}
 
 
 def register_mapping(mapping: EntityMapping):
-    entity_mapping_registry[mapping.object_type] = mapping
+    entity_mapping_registry[mapping.entity_type] = mapping
 
 
 def lookup_mapping(type: type) -> EntityMapping:
@@ -245,7 +260,7 @@ class Session:
         self._backend = backend
         self._identity_map = dict[tuple[EntityMapping, KeyValue], object]()
         self._children_map = dict[tuple[Child, KeyValue], set[KeyValue]]()
-        self.mappings = {mapping.object_type: mapping for mapping in mappings}
+        self.mappings = {mapping.entity_type: mapping for mapping in mappings}
 
     async def get(self, entity_type: Type[TEntity], id: KeyValue) -> TEntity | None:
         return (await self.batch_get(entity_type, (id,)))[0]
@@ -289,7 +304,7 @@ class Session:
 
         found = dict[KeyValue, Entity]()
         for id, full in record_map.items():
-            entity = self._get_entity_in_track(mapping, id) or mapping.create_object()
+            entity = self._get_entity_in_track(mapping, id) or mapping.entity_factory()
             mapping.write_record(entity, full)
             found[id] = entity
 
@@ -467,12 +482,16 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         self._mapping = session.mappings[entity_type]
         self._query = StructuredQuery(mapping=self._mapping, alias=alias, joins={}, filter_conds=[])
 
-    def join(self, target: type | str, alias: str, on: SQLFragment, **params):
-        self._query.joins[alias] = StructuredQuery.Join("JOIN", self._get_target(target, params), alias, on)
+    def join(self, target: type | str, alias: str, on: str, **params):
+        self._query.joins[alias] = StructuredQuery.Join(
+            "JOIN", self._get_target(target, params), alias, SQLFragment.parse(on, params)
+        )
         return self
 
-    def left_join(self, target: type | str, alias: str, on: SQLFragment, **params):
-        self._query.joins[alias] = StructuredQuery.Join("LEFT JOIN", self._get_target(target, params), alias, on)
+    def left_join(self, target: type | str, alias: str, on: str, **params):
+        self._query.joins[alias] = StructuredQuery.Join(
+            "LEFT JOIN", self._get_target(target, params), alias, SQLFragment.parse(on, params)
+        )
         return self
 
     def filter(self, condition: str, **params):
@@ -496,7 +515,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
     async def fetch(self, limit: int | None = None, offset: int = 0):
         records = await self._session._backend.fetch_structured_query(self._query, limit, offset)
         primary_key_values = [self._mapping.identify_record(rec) for rec in records]
-        entities = await self._session.batch_get(self._mapping.object_type, primary_key_values)
+        entities = await self._session.batch_get(self._mapping.entity_type, primary_key_values)
         return typing.cast(list[TEntity], entities)
 
     async def fetch_one(self):
@@ -544,6 +563,7 @@ class EntityMappingConfig(typing.TypedDict, total=False):
     primary: str | list[str]
     fields: typing.Callable[[], dict[str, str]]
     children: typing.Callable[[], dict[str, "ChildConfig"]]
+    factory: EntityFactory
 
 
 class ChildConfig(typing.TypedDict):
