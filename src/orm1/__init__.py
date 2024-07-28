@@ -1,4 +1,5 @@
 import typing
+import types
 import re
 from typing import Collection, Sequence, Type
 
@@ -100,22 +101,16 @@ class ParentalKey(Key):
 
 
 class Child:
-    def __init__(self, name: str, mapping: typing.Callable[..., "EntityMapping"], *columns: str):
+    def __init__(self, name: str, target: type[Entity], columns: Sequence[str]):
         self.name = name
-        self._mapping = mapping
+        self.target = target
         self._columns = columns
 
     def get_entity_attribute(self, entity: Entity) -> Sequence[Entity]: ...
     def set_entity_attribute(self, entity: Entity, values: list[Entity]): ...
 
-    def get_mapping(self) -> "EntityMapping":
-        return self._mapping()
-
     def parental_key(self, parent_key: Key) -> ParentalKey:
         return ParentalKey(self._columns, parent_key)
-
-    def get_columns(self):
-        return self._columns
 
 
 class Plural(Child):
@@ -239,11 +234,14 @@ class Session:
     def __init__(
         self,
         backend: SessionBackend,
-        mappings: Collection[EntityMapping] = entity_mapping_registry.values(),
+        mappings: Collection[EntityMapping] | None = None,
     ):
         self._backend = backend
         self._identity_map = dict[tuple[EntityMapping, KeyValue], object]()
         self._children_map = dict[tuple[Child, KeyValue], set[KeyValue]]()
+
+        if mappings is None:
+            mappings = [*entity_mapping_registry.values(), *auto.build()]
         self.mappings = {mapping.entity_type: mapping for mapping in mappings}
 
     async def get(self, entity_type: Type[TEntity], id: KeyValue) -> TEntity | None:
@@ -295,7 +293,7 @@ class Session:
         for child in mapping.children:
             child_entities = {parent_key: list[Entity]() for parent_key in found}
             children_found = await self._get_by_key(
-                child.get_mapping(), child.parental_key(mapping.primary_key), child_entities
+                self.mappings[child.target], child.parental_key(mapping.primary_key), child_entities
             )
             for key_value, entity in children_found:
                 child_entities[key_value].append(entity)
@@ -331,23 +329,25 @@ class Session:
             saved[id] = entity
 
         for child in mapping.children:
+            child_mapping = self.mappings[child.target]
             previous_ids = self._get_children_ids_in_track(child, saved)
             new_ids = {
-                child.get_mapping().identify_entity(c)
+                child_mapping.identify_entity(c)
                 for parent in saved.values()
                 for c in child.get_entity_attribute(parent)
             }
-            await self._delete_by_key(child.get_mapping(), child.get_mapping().primary_key, previous_ids - new_ids)
+            await self._delete_by_key(child_mapping, child_mapping.primary_key, previous_ids - new_ids)
 
             to_save = [(pid, c) for pid, parent in saved.items() for c in child.get_entity_attribute(parent)]
-            await self._save_by_key(child.get_mapping(), child.parental_key(mapping.primary_key), to_save)
+            await self._save_by_key(child_mapping, child.parental_key(mapping.primary_key), to_save)
 
         return values
 
     async def _delete_by_key(self, mapping: EntityMapping, key: Key, ids: Collection[KeyValue]):
         for child in mapping.children:
+            child_mapping = self.mappings[child.target]
             child_ids = self._get_children_ids_in_track(child, ids)
-            await self._delete_by_key(child.get_mapping(), child.get_mapping().primary_key, child_ids)
+            await self._delete_by_key(child_mapping, child_mapping.primary_key, child_ids)
 
         await self._backend.delete_by_keys(mapping, key, ids)
 
@@ -359,22 +359,24 @@ class Session:
 
         for child in mapping.children:
             new_ids = set[KeyValue]()
+            child_mapping = self.mappings[child.target]
 
             for id, entity in entity_map.items():
                 child_entities = child.get_entity_attribute(entity)
-                child_ids = {child.get_mapping().identify_entity(child_obj) for child_obj in child_entities}
+                child_ids = {child_mapping.identify_entity(child_obj) for child_obj in child_entities}
 
                 self._children_map[(child, id)] = child_ids
-                self._track(child.get_mapping(), child_entities)
+                self._track(child_mapping, child_entities)
                 new_ids.update(child_ids)
 
             previous_ids = self._get_children_ids_in_track(child, entity_map)
-            self._untrack(child.get_mapping(), previous_ids - new_ids)
+            self._untrack(child_mapping, previous_ids - new_ids)
 
     def _untrack(self, mapping: EntityMapping, ids: Collection[KeyValue]):
         for child in mapping.children:
             child_ids = self._get_children_ids_in_track(child, ids)
-            self._untrack(child.get_mapping(), child_ids)
+            child_mapping = self.mappings[child.target]
+            self._untrack(child_mapping, child_ids)
             for id in ids:
                 del self._children_map[(child, id)]
 
@@ -526,34 +528,6 @@ class SessionRawQuery:
     async def fetch_one(self):
         results = await self.fetch()
         return results[0] if results else None
-
-
-# mapped
-
-definition_registry = dict[type, "EntityMappingConfig"]()
-
-
-def mapped(**kwargs: typing.Unpack["EntityMappingConfig"]):
-    def wrapper(entity_type):
-        definition_registry[entity_type] = kwargs
-        return entity_type
-
-    return wrapper
-
-
-class EntityMappingConfig(typing.TypedDict, total=False):
-    schema: str
-    table: str
-    primary: str | list[str]
-    fields: typing.Callable[[], dict[str, str]]
-    children: typing.Callable[[], dict[str, "ChildConfig"]]
-    factory: EntityFactory
-
-
-class ChildConfig(typing.TypedDict):
-    kind: typing.Literal["singular", "plural"]
-    columns: list[str]
-    target: type
 
 
 # adapter
@@ -756,3 +730,105 @@ class AsyncPGSessionBackend(SessionBackend):
             return self._sql_qn(element.prefix, element.name)
         elif isinstance(element, SQLFragment):
             return "".join(self._sql_element(el, inout_params) for el in element._elements)
+
+
+# mapped
+
+
+class AutoMappingBuilder:
+    class EntityMappingConfig(typing.TypedDict, total=False):
+        schema: str
+        table: str
+        primary: str | list[str]
+        fields: typing.Callable[[], dict[str, str]]
+        children: typing.Callable[[], dict[str, "AutoMappingBuilder.ChildConfig"]]
+        factory: EntityFactory
+
+    class ChildConfig(typing.TypedDict):
+        kind: typing.Literal["singular", "plural"]
+        columns: list[str]
+        target: type
+
+    _configs = dict[type, EntityMappingConfig]()
+    _mappings = dict[type, EntityMapping]()
+
+    def mapped(self, **kwargs: typing.Unpack[EntityMappingConfig]):
+        def wrapper(entity_type):
+            self._configs[entity_type] = kwargs
+            return entity_type
+
+        return wrapper
+
+    def build(self):
+        mappings = list[EntityMapping]()
+        for cls, opts in self._configs.items():
+            if cls in self._mappings:
+                mappings.append(self._mappings[cls])
+            else:
+                mapping = self._build_entity_mapping(cls, opts)
+                mappings.append(mapping)
+                self._mappings[cls] = mapping
+
+        return mappings
+
+    def _build_entity_mapping(self, entity_type: type, opts: EntityMappingConfig) -> EntityMapping:
+        field_configs = opts.get("fields", lambda: {})()
+        child_configs = opts.get("children", lambda: {})()
+        maybe_str_or_list = opts.get("primary", "id")
+
+        if isinstance(maybe_str_or_list, str):
+            primary = [maybe_str_or_list]
+        else:
+            primary = maybe_str_or_list
+
+        fields = {name: Field(name, column, name in primary) for name, column in field_configs.items()}
+        children = {
+            name: (
+                Plural(name, config["target"], *config["columns"])
+                if config["kind"] == "plural"
+                else Singular(name, config["target"], *config["columns"])
+            )
+            for name, config in child_configs.items()
+        }
+        annotations = typing.get_type_hints(entity_type)
+        for name, type_hint in annotations.items():
+            origin = typing.get_origin(type_hint)
+            args = typing.get_args(type_hint)
+            # skip private fields
+            if name.startswith("_"):
+                continue
+            # skip registered fields
+            elif name in fields or name in children:
+                continue
+            # list of registered entity
+            elif origin is list and args[0] in self._configs:
+                children[name] = Plural(name, args[0], self._parental_key_name(entity_type.__name__, primary))
+            # registered entity
+            elif type_hint in self._configs:
+                children[name] = Singular(name, type_hint, self._parental_key_name(entity_type.__name__, primary))
+            # optional of registered entity
+            elif origin == types.UnionType and len(args) == 2 and args[1] is type(None) and args[0] in self._configs:
+                children[name] = Singular(name, args[0], self._parental_key_name(entity_type.__name__, primary))
+            else:
+                fields[name] = Field(name, self._column_name(name), name in primary)
+
+        return EntityMapping.define(
+            entity_type,
+            opts.get("table", self._table_name(entity_type.__name__)),
+            opts.get("schema"),
+            list(fields.values()),
+            list(children.values()),
+            opts.get("factory"),
+        )
+
+    def _parental_key_name(self, s: str, field_names: typing.Sequence[str]) -> list[str]:
+        return [self._table_name(s) + "_" + col for col in field_names]
+
+    def _column_name(self, s: str) -> str:
+        return self._table_name(s)
+
+    def _table_name(self, s: str, patt=re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")):
+        return patt.sub("_", s).lower()
+
+
+auto = AutoMappingBuilder()

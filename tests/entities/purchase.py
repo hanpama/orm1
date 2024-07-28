@@ -1,10 +1,10 @@
 from uuid import UUID
 from datetime import datetime
 from decimal import Decimal
-from orm1 import mapped
+from orm1 import auto
 
 
-@mapped()
+@auto.mapped()
 class Purchase:
     id: UUID | None
     code: str
@@ -33,7 +33,7 @@ class Purchase:
         return self.__dict__ == other.__dict__
 
 
-@mapped()
+@auto.mapped()
 class PurchaseLineItem:
     id: UUID | None
     product_id: UUID | None
@@ -53,7 +53,7 @@ class PurchaseLineItem:
         return self.__dict__ == other.__dict__
 
 
-@mapped()
+@auto.mapped()
 class PurchaseBankTransfer:
     id: UUID | None
     sender_name: str
@@ -79,7 +79,7 @@ class PurchaseBankTransfer:
         return self.__dict__ == other.__dict__
 
 
-@mapped()
+@auto.mapped()
 class PurchaseBankTransferAttachment:
     id: UUID | None
     media_uri: str
@@ -99,7 +99,7 @@ class PurchaseBankTransferAttachment:
         return self.__dict__ == other.__dict__
 
 
-@mapped()
+@auto.mapped()
 class PurchaseCouponUsage:
     id: UUID | None
     coupon_id: UUID | None

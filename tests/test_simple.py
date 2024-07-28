@@ -5,9 +5,8 @@ from uuid import UUID
 
 import asyncpg
 
-from orm1 import Session, AsyncPGSessionBackend
+from orm1 import Session, AsyncPGSessionBackend, auto
 
-from . import database as _
 from .entities.purchase import (
     Purchase,
     PurchaseBankTransfer,
