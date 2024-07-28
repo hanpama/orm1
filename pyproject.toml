@@ -1,6 +1,6 @@
 [project]
 name = 'orm1'
-version = '0.1.0-alpha4'
+version = '0.1.0-alpha5'
 dependencies = ['asyncpg==0.29.0']
 authors = [{ name = "Kyungil Choi", email = "hanpama@gmail.com" }]
 description = "Object-relational mapping library for PostgreSQL"
