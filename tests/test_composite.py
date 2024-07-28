@@ -3,9 +3,8 @@ from unittest import IsolatedAsyncioTestCase
 
 import asyncpg
 
-from orm1 import Session, AsyncPGSessionBackend
+from orm1 import Session, AsyncPGSessionBackend, auto
 
-from . import database as _
 from .entities.course import Course, CourseAttachment, CourseModule, CourseModuleMaterial
 
 

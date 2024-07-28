@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 from datetime import datetime
-from orm1 import mapped
+from orm1 import auto
 
 
-@mapped(primary=["semester_id", "subject_id"])
+@auto.mapped(primary=["semester_id", "subject_id"])
 @dataclass(eq=False)
 class Course:
     semester_id: str
@@ -13,7 +13,7 @@ class Course:
     attachments: list["CourseAttachment"]
 
 
-@mapped()
+@auto.mapped()
 @dataclass(eq=False)
 class CourseAttachment:
     id: str
@@ -21,7 +21,7 @@ class CourseAttachment:
     created_at: datetime
 
 
-@mapped()
+@auto.mapped()
 @dataclass(eq=False)
 class CourseModule:
     id: str
@@ -30,7 +30,7 @@ class CourseModule:
     materials: list["CourseModuleMaterial"]
 
 
-@mapped()
+@auto.mapped()
 @dataclass(eq=False)
 class CourseModuleMaterial:
     id: str
