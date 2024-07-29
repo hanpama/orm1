@@ -655,7 +655,14 @@ class AsyncPGSessionBackend(SessionBackend):
         from_alias = self._sql_q(query.alias)
         joins = self._sql_l(self._sql_join(join, params) for join in query.joins.values())
         filters = self._sql_filter_conds(query.filter_conds, params)
-        order_by = self._sql_l(self._sql_order_by_option(option, params) for option in query.order_by_options)
+                
+        if query.order_by_options:
+            order_by = f"ORDER BY {self._sql_l(
+                self._sql_order_by_option(option, params)
+                for option in query.order_by_options
+            )} "
+        else:
+            order_by = ""
 
         params.append(limit)
         limit_cluase = f"LIMIT ${len(params)}"
@@ -664,7 +671,7 @@ class AsyncPGSessionBackend(SessionBackend):
 
         sql = (
             f"SELECT {select} FROM {from_table} AS {from_alias} {joins} "
-            f"GROUP BY {select} HAVING {filters} ORDER BY {order_by} "
+            f"GROUP BY {select} HAVING {filters} {order_by}"
             f"{limit_cluase} {offset_clause};"
         )
         records = await self._conn.fetch(sql, *params)
