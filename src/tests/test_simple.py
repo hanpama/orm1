@@ -1,11 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
-from unittest import IsolatedAsyncioTestCase
 from uuid import UUID
 
-import asyncpg
-
-from orm1 import Session, AsyncPGSessionBackend
+from . import base
 from .entities.purchase import (
     Purchase,
     PurchaseBankTransfer,
@@ -13,10 +10,20 @@ from .entities.purchase import (
     PurchaseCouponUsage,
     PurchaseLineItem,
 )
-from . import configs
 
 
-class SimpleTest(IsolatedAsyncioTestCase):
+class SimpleTest(base.AutoRollbackTestCase):
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+
+        session = self.session()
+        await session.batch_save(
+            Purchase,
+            self.purchase1,
+            self.purchase2,
+            self.purchase3,
+        )
 
     purchase1 = Purchase(
         id=UUID("a028f36d-4cba-476f-9143-3bbe8e0b5f8d"),
@@ -117,123 +124,123 @@ class SimpleTest(IsolatedAsyncioTestCase):
     )
 
     async def test_update_root_scalar(self):
-        s1 = self._session()
+        s1 = self.session()
         p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.code = "CP-00033"
         await s1.save(p1)
 
-        s2 = self._session()
+        s2 = self.session()
         p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert p2.code == "CP-00033"
 
     async def test_set_null_root_scalar(self):
-        s1 = self._session()
+        s1 = self.session()
         p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.user_id = None
         await s1.save(p1)
 
-        s2 = self._session()
+        s2 = self.session()
         p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert p2.user_id is None
 
     async def test_delete_root(self):
-        s1 = self._session()
+        s1 = self.session()
         p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         await s1.delete(p1)
 
-        s2 = self._session()
+        s2 = self.session()
         p2 = await s2.get(Purchase, self.purchase1.id)
         assert not p2
 
     async def test_plural_append(self):
-        s1 = self._session()
+        s1 = self.session()
         p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.line_items.append(PurchaseLineItem(product_id=UUID("853868c7-570c-4e65-8d6d-ebeb185e4eb7"), quantity=3))
         await s1.save(p1)
 
-        s2 = self._session()
+        s2 = self.session()
         p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert len(p2.line_items) == 3
 
     async def test_plural_scalar_update(self):
-        s1 = self._session()
+        s1 = self.session()
         p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.line_items[0].quantity = 10
         await s1.save(p1)
 
-        s2 = self._session()
+        s2 = self.session()
         p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert p2.line_items[0].quantity == 10
 
     async def test_plural_delete(self):
-        s1 = self._session()
+        s1 = self.session()
         p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         del p1.line_items[0]
         await s1.save(p1)
 
-        s2 = self._session()
+        s2 = self.session()
         p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert len(p2.line_items) == 1
 
     async def test_plural_null(self):
-        s1 = self._session()
+        s1 = self.session()
         p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         setattr(p1, "line_items", None)  # p1.line_items = None
         await s1.save(p1)
 
-        s2 = self._session()
+        s2 = self.session()
         p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert p2.line_items == []
 
     async def test_singular_set(self):
-        s1 = self._session()
+        s1 = self.session()
         p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.coupon_usage = PurchaseCouponUsage(coupon_id=UUID("f5d8b5ea-c7cb-407d-9595-273eb1a87a6b"))
         await s1.save(p1)
 
-        s2 = self._session()
+        s2 = self.session()
         p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert p2.coupon_usage
         assert p2.coupon_usage.coupon_id == UUID("f5d8b5ea-c7cb-407d-9595-273eb1a87a6b")
 
     async def test_singular_delete(self):
-        s1 = self._session()
+        s1 = self.session()
         p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
         p1.coupon_usage = None
         await s1.save(p1)
 
-        s2 = self._session()
+        s2 = self.session()
         p2 = await s2.get(Purchase, self.purchase1.id)
         assert p2
         assert not p2.coupon_usage
 
     async def test_nested_complex_update(self):
-        s1 = self._session()
+        s1 = self.session()
         p1 = await s1.get(Purchase, self.purchase1.id)
         assert p1
 
@@ -288,7 +295,7 @@ class SimpleTest(IsolatedAsyncioTestCase):
 
         await s1.save(p1)
 
-        s2 = self._session()
+        s2 = self.session()
         p2 = await s2.get(Purchase, self.purchase1.id)
 
         assert p2
@@ -296,7 +303,7 @@ class SimpleTest(IsolatedAsyncioTestCase):
         assert p1 == p2
 
     async def test_raw(self):
-        s = self._session()
+        s = self.session()
         query = s.raw(
             """
             SELECT 'this is :string' as "a:a", created_at::TIMESTAMPTZ
@@ -316,7 +323,7 @@ class SimpleTest(IsolatedAsyncioTestCase):
         assert results[0]["created_at"]
 
     async def test_root_find_forward(self):
-        s = self._session()
+        s = self.session()
         q = s.query(Purchase, "p").filter(
             "p.user_id = :value",
             value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
@@ -327,30 +334,3 @@ class SimpleTest(IsolatedAsyncioTestCase):
 
         assert results[0].code == self.purchase3.code
         assert results[1].code == self.purchase2.code
-
-    async def asyncSetUp(self) -> None:
-        self._conn: asyncpg.Connection = await asyncpg.connect(self.dsn)
-        self._backend = AsyncPGSessionBackend(self._conn)
-        self._tx = self._conn.transaction()
-
-        session = Session(self._backend)
-
-        await self._tx.start()
-        await session.batch_save(
-            Purchase,
-            self.purchase1,
-            self.purchase2,
-            self.purchase3,
-        )
-
-        return await super().asyncSetUp()
-
-    async def asyncTearDown(self) -> None:
-        await self._tx.rollback()
-        await self._conn.close()
-        return await super().asyncTearDown()
-
-    def _session(self):
-        return Session(self._backend)
-
-    dsn = configs.get_database_uri()

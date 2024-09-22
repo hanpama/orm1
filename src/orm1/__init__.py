@@ -4,6 +4,7 @@ import re
 from typing import Collection, Sequence, Type
 
 import asyncpg
+import asyncpg.transaction
 
 # mapping
 
@@ -284,6 +285,9 @@ class SessionBackend(typing.Protocol):
     ) -> list[Rec]: ...
     async def count_structured_query(self, query: StructuredQuery) -> int: ...
     async def fetch_raw_query(self, query: SQLFragment) -> list[Rec]: ...
+    async def begin(self): ...
+    async def commit(self): ...
+    async def rollback(self): ...
 
 
 entity_mapping_registry: dict[type, EntityMapping] = {}
@@ -349,6 +353,15 @@ class Session:
 
     def raw(self, query: str, **params):
         return SessionRawQuery(self, query, params)
+
+    async def begin(self):
+        await self._backend.begin()
+
+    async def commit(self):
+        await self._backend.commit()
+
+    async def rollback(self):
+        await self._backend.rollback()
 
     async def _get_by_key(self, mapping: EntityMapping, key: Key, values: Collection[KeyValue]):
         records = await self._backend.select_by_keys(
@@ -569,8 +582,10 @@ class SessionRawQuery:
 
 
 class AsyncPGSessionBackend(SessionBackend):
-    def __init__(self, conn: asyncpg.Connection | asyncpg.pool.Pool):
-        self._conn = conn
+    def __init__(self, pool: asyncpg.Pool):
+        self._pool = pool
+        self._active: asyncpg.Pool | asyncpg.Connection = pool
+        self._tx: asyncpg.transaction.Transaction | None = None
 
     async def select_by_keys(
         self,
@@ -587,7 +602,7 @@ class AsyncPGSessionBackend(SessionBackend):
         query = f"{with_v} SELECT {select_list} FROM {from_table} t JOIN v USING ({join_cols});"
         params = [[cvm[i] for cvm in values] for i in where_attrs]
 
-        records = await self._conn.fetch(query, *params)
+        records = await self._active.fetch(query, *params)
         return [dict(zip(select_attrs, record)) for record in records]
 
     async def insert_records(
@@ -610,7 +625,7 @@ class AsyncPGSessionBackend(SessionBackend):
         )
         params = [[cvm[i] for cvm in values] for i in insert_attrs]
 
-        records = await self._conn.fetch(query, *params)
+        records = await self._active.fetch(query, *params)
 
         return [dict(zip(returning_attrs, record)) for record in records]
 
@@ -645,7 +660,7 @@ class AsyncPGSessionBackend(SessionBackend):
             f"RETURNING {returning};"
         )
         params = [[cvm[i] for cvm in values] for i in value_attrs]
-        records = await self._conn.fetch(query, *params)
+        records = await self._active.fetch(query, *params)
 
         return [dict(zip(returning_attrs, record)) for record in records]
 
@@ -657,7 +672,7 @@ class AsyncPGSessionBackend(SessionBackend):
         with_v = self._sql_with_v(schema, table, attrs)
         query = f"{with_v} " f"DELETE FROM {delete_from} t USING v " f"WHERE ({where_left}) = ({where_right});"
         params = [[cvm[i] for cvm in values] for i in attrs]
-        await self._conn.fetch(query, *params)
+        await self._active.fetch(query, *params)
 
     async def fetch_structured_query(
         self,
@@ -671,7 +686,7 @@ class AsyncPGSessionBackend(SessionBackend):
         if len(order_by) > 0:
             sql += " ORDER BY " + ", ".join(
                 "{expr} {direction} {nulls}".format(
-                    expr=self._sql_element(option.expr, params),
+                    expr=self._sql_el(option.expr, params),
                     direction="ASC" if option.ascending else "DESC",
                     nulls="NULLS LAST" if option.nulls_last else "NULLS FIRST",
                 )
@@ -679,27 +694,49 @@ class AsyncPGSessionBackend(SessionBackend):
             )
 
         if isinstance(limit, int):
-            sql += f" LIMIT {self._sql_element(SQLVar(limit), params)} "
+            sql += f" LIMIT {self._sql_el(SQLVar(limit), params)} "
 
         if isinstance(offset, int):
-            sql += f" OFFSET {self._sql_element(SQLVar(offset), params)}"
+            sql += f" OFFSET {self._sql_el(SQLVar(offset), params)}"
 
-        records = await self._conn.fetch(sql, *params)
+        records = await self._active.fetch(sql, *params)
         return [dict(zip(query.select_cols, record)) for record in records]
 
     async def count_structured_query(self, query: StructuredQuery) -> int:
         sql, params = self._sql_structured_query(query)
         sql = f"SELECT COUNT(*) FROM ({sql}) _;"
-        records = await self._conn.fetch(sql, *params)
+        records = await self._active.fetch(sql, *params)
         return records[0][0]
 
     async def fetch_raw_query(self, query: SQLFragment) -> list[Rec]:
         params = []
-        sql = "".join(self._sql_element(el, params) for el in query._elements)
-        return await self._conn.fetch(sql, *params)
+        sql = "".join(self._sql_el(el, params) for el in query._elements)
+        return await self._active.fetch(sql, *params)
 
     async def fetch(self, query: str, *params) -> list[Rec]:
-        return await self._conn.fetch(query, *params)
+        return await self._active.fetch(query, *params)
+
+    async def begin(self):
+        assert not self._tx
+        conn: asyncpg.Connection = await self._pool.acquire()
+        tx: asyncpg.transaction.Transaction = conn.transaction()
+        await tx.start()
+        self._active = conn
+        self._tx = tx
+
+    async def commit(self):
+        assert self._tx
+        await self._tx.commit()
+        await self._pool.release(self._active)
+        self._active = self._pool
+        self._tx = None
+
+    async def rollback(self):
+        assert self._tx
+        await self._tx.rollback()
+        await self._pool.release(self._active)
+        self._active = self._pool
+        self._tx = None
 
     def _sql_structured_query(self, query: StructuredQuery):
         params = []
@@ -713,8 +750,8 @@ class AsyncPGSessionBackend(SessionBackend):
             sql += " " + " ".join(
                 "{join_type} {target_expr} ON {condition_expr}".format(
                     join_type=join.type,
-                    target_expr=self._sql_element(join.target, params),
-                    condition_expr=self._sql_element(join.on, params),
+                    target_expr=self._sql_el(join.target, params),
+                    condition_expr=self._sql_el(join.on, params),
                 )
                 for join in query.joins.values()
             )
@@ -722,7 +759,7 @@ class AsyncPGSessionBackend(SessionBackend):
         sql += f" GROUP BY {select}"
 
         if query.filter_conds:
-            sql += f" HAVING " + " AND ".join(f"({self._sql_element(cond, params)})" for cond in query.filter_conds)
+            sql += f" HAVING " + " AND ".join(f"({self._sql_el(cond, params)})" for cond in query.filter_conds)
 
         return sql, params
 
@@ -745,7 +782,7 @@ class AsyncPGSessionBackend(SessionBackend):
     def _sql_q(self, name: str):
         return '"' + name.replace('"', '""') + '"'
 
-    def _sql_element(self, element: SQLFragmentElement, inout_params: list) -> str:
+    def _sql_el(self, element: SQLFragmentElement, inout_params: list) -> str:
         if isinstance(element, SQLText):
             return element.text
         elif isinstance(element, SQLVar):
@@ -754,7 +791,7 @@ class AsyncPGSessionBackend(SessionBackend):
         elif isinstance(element, SQLName):
             return self._sql_qn(element.prefix, element.name)
         elif isinstance(element, SQLFragment):
-            return "".join(self._sql_element(el, inout_params) for el in element._elements)
+            return "".join(self._sql_el(el, inout_params) for el in element._elements)
 
 
 # mapped
