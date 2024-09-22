@@ -1,15 +1,15 @@
 from datetime import datetime
-from unittest import IsolatedAsyncioTestCase
 
-import asyncpg
-
-from orm1 import Session, AsyncPGSessionBackend
-
+from . import base
 from .entities.course import Course, CourseAttachment, CourseModule, CourseModuleMaterial
-from . import configs
 
 
-class CompositeTest(IsolatedAsyncioTestCase):
+class CompositeTest(base.AutoRollbackTestCase):
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+
+        session = self.session()
+        await session.save(self.course1)
 
     course1: Course = Course(
         semester_id="2101",
@@ -61,30 +61,8 @@ class CompositeTest(IsolatedAsyncioTestCase):
     )
 
     async def test_update_composite_root_scalar(self):
-        session = self._session()
+        session = self.session()
         course = await session.get(Course, (self.course1.semester_id, self.course1.subject_id))
         assert course
         course.created_at = datetime.now()
         await session.save(self.course1)
-
-    async def asyncSetUp(self) -> None:
-        self._conn: asyncpg.Connection = await asyncpg.connect(self.dsn)
-        self._backend = AsyncPGSessionBackend(self._conn)
-        self._tx = self._conn.transaction()
-
-        session = Session(self._backend)
-
-        await self._tx.start()
-        await session.save(self.course1)
-
-        return await super().asyncSetUp()
-
-    async def asyncTearDown(self) -> None:
-        await self._tx.rollback()
-        await self._conn.close()
-        return await super().asyncTearDown()
-
-    def _session(self):
-        return Session(self._backend)
-
-    dsn = configs.get_database_uri()
