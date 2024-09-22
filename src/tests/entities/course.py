@@ -3,7 +3,12 @@ from datetime import datetime
 from orm1 import auto
 
 
-@auto.mapped(primary=["semester_id", "subject_id"])
+@auto.mapped(
+    fields={
+        "semester_id": {"primary": True},
+        "subject_id": {"primary": True},
+    }
+)
 @dataclass(eq=False)
 class Course:
     semester_id: str
