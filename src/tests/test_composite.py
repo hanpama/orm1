@@ -3,9 +3,10 @@ from unittest import IsolatedAsyncioTestCase
 
 import asyncpg
 
-from orm1 import Session, AsyncPGSessionBackend, auto
+from orm1 import Session, AsyncPGSessionBackend
 
 from .entities.course import Course, CourseAttachment, CourseModule, CourseModuleMaterial
+from . import configs
 
 
 class CompositeTest(IsolatedAsyncioTestCase):
@@ -86,4 +87,4 @@ class CompositeTest(IsolatedAsyncioTestCase):
     def _session(self):
         return Session(self._backend)
 
-    dsn = "postgresql://postgres:8800bc84f23af727f4e9@localhost:3200/postgres"
+    dsn = configs.get_database_uri()

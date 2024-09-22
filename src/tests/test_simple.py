@@ -5,8 +5,7 @@ from uuid import UUID
 
 import asyncpg
 
-from orm1 import Session, AsyncPGSessionBackend, auto
-
+from orm1 import Session, AsyncPGSessionBackend
 from .entities.purchase import (
     Purchase,
     PurchaseBankTransfer,
@@ -14,6 +13,7 @@ from .entities.purchase import (
     PurchaseCouponUsage,
     PurchaseLineItem,
 )
+from . import configs
 
 
 class SimpleTest(IsolatedAsyncioTestCase):
@@ -321,10 +321,7 @@ class SimpleTest(IsolatedAsyncioTestCase):
             "p.user_id = :value",
             value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
         )
-        results = await q.order_by(
-            q.desc("p.code"),
-            q.asc("p.id"),
-        ).fetch(limit=2)
+        results = await q.fetch(q.desc("p.code"), limit=2)
 
         assert len(results) == 2
 
@@ -356,4 +353,4 @@ class SimpleTest(IsolatedAsyncioTestCase):
     def _session(self):
         return Session(self._backend)
 
-    dsn = "postgresql://postgres:8800bc84f23af727f4e9@localhost:3200/postgres"
+    dsn = configs.get_database_uri()
