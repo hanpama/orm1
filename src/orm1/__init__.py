@@ -130,24 +130,14 @@ class Singular(Child):
         setattr(entity, self.name, values[0] if len(values) else None)
 
 
-class EntityMapping:
-    def __init__(
-        self,
-        entity_type: Type[Entity],
-        table: str,
-        schema: str | None,
-        fields: list[Field],
-        children: list[Child],
-        primary_key: PrimaryKey,
-        entity_factory: EntityFactory,
-    ):
-        self.entity_type = entity_type
-        self.table = table
-        self.schema = schema
-        self.fields = fields
-        self.children = children
-        self.primary_key = primary_key
-        self.entity_factory = entity_factory
+class EntityMapping(typing.NamedTuple):
+    entity_type: Type[Entity]
+    table: str
+    schema: str | None
+    fields: list[Field]
+    children: list[Child]
+    primary_key: PrimaryKey
+    entity_factory: EntityFactory
 
     def identify_entity(self, entity: Entity) -> KeyValue:
         return self.primary_key.get_from_entity(entity)
@@ -217,26 +207,28 @@ class SQLFragment:
 SQLFragmentElement = SQLText | SQLVar | SQLName | SQLFragment
 
 
+class SQLJoinItem(typing.NamedTuple):
+    Type = typing.Literal["JOIN", "LEFT JOIN"]
+
+    type: Type
+    target: SQLFragment
+    alias: str
+    on: SQLFragment
+
+
+class SQLOrderByItem(typing.NamedTuple):
+    expr: SQLFragment
+    ascending: bool
+    nulls_last: bool
+
+
 class StructuredQuery(typing.NamedTuple):
-    JoinType = typing.Literal["JOIN", "LEFT JOIN"]
-
-    class Join(typing.NamedTuple):
-        type: "StructuredQuery.JoinType"
-        target: SQLFragment
-        alias: str
-        on: SQLFragment
-
     schema: str | None
     table: str
     key_cols: Collection[str]
     alias: str
-    joins: dict[str, Join]
+    joins: dict[str, SQLJoinItem]
     filter_conds: list[SQLFragment]
-
-    class OrderByOption(typing.NamedTuple):
-        expr: SQLFragment
-        ascending: bool
-        nulls_last: bool
 
 
 # sessions
@@ -268,20 +260,10 @@ class SessionBackend(typing.Protocol):
         returning_attrs: Collection[str],
         values: Collection[Rec],
     ) -> list[Rec]: ...
-    async def delete_by_keys(
-        self,
-        schema: str | None,
-        table: str,
-        attrs: Collection[str],
-        values: Collection[Rec],
-    ): ...
+    async def delete_by_keys(self, schema: str | None, table: str, attrs: Collection[str], values: Collection[Rec]): ...
     async def fetch(self, query: str, *params: PostgresCodable) -> list[Rec]: ...
     async def fetch_structured_query(
-        self,
-        query: StructuredQuery,
-        order_by: Sequence[StructuredQuery.OrderByOption],
-        limit: int | None,
-        offset: int | None,
+        self, query: StructuredQuery, order_by: Sequence[SQLOrderByItem], limit: int | None, offset: int | None
     ) -> list[Rec]: ...
     async def count_structured_query(self, query: StructuredQuery) -> int: ...
     async def fetch_raw_query(self, query: SQLFragment) -> list[Rec]: ...
@@ -517,13 +499,13 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         )
 
     def join(self, target: type | str, alias: str, on: str, **params):
-        self._query.joins[alias] = StructuredQuery.Join(
+        self._query.joins[alias] = SQLJoinItem(
             "JOIN", self._get_target(target, params), alias, SQLFragment.parse(on, params)
         )
         return self
 
     def left_join(self, target: type | str, alias: str, on: str, **params):
-        self._query.joins[alias] = StructuredQuery.Join(
+        self._query.joins[alias] = SQLJoinItem(
             "LEFT JOIN", self._get_target(target, params), alias, SQLFragment.parse(on, params)
         )
         return self
@@ -543,7 +525,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
 
     async def fetch(
         self,
-        *order_by: StructuredQuery.OrderByOption,
+        *order_by: SQLOrderByItem,
         limit: int | None = None,
         offset: int | None = None,
     ):
@@ -558,11 +540,11 @@ class SessionEntityQuery(typing.Generic[TEntity]):
 
     @classmethod
     def asc(cls, expr: str, nulls_last=True, **params):
-        return StructuredQuery.OrderByOption(SQLFragment.parse(expr, params), True, nulls_last)
+        return SQLOrderByItem(SQLFragment.parse(expr, params), True, nulls_last)
 
     @classmethod
     def desc(cls, expr: str, nulls_last=True, **params):
-        return StructuredQuery.OrderByOption(SQLFragment.parse(expr, params), False, nulls_last)
+        return SQLOrderByItem(SQLFragment.parse(expr, params), False, nulls_last)
 
 
 class SessionRawQuery:
@@ -677,7 +659,7 @@ class AsyncPGSessionBackend(SessionBackend):
     async def fetch_structured_query(
         self,
         query: StructuredQuery,
-        order_by: Sequence[StructuredQuery.OrderByOption],
+        order_by: Sequence[SQLOrderByItem],
         limit: int | None,
         offset: int | None,
     ) -> list[Rec]:
@@ -697,7 +679,7 @@ class AsyncPGSessionBackend(SessionBackend):
     async def paginate_structured_query(
         self,
         query: StructuredQuery,
-        order_by: Sequence[StructuredQuery.OrderByOption],
+        order_by: Sequence[SQLOrderByItem],
         limit: int | None,
         offset: int | None,
         cursor: Rec | None,
@@ -725,14 +707,16 @@ class AsyncPGSessionBackend(SessionBackend):
                 if i > 0:
                     or_predicates.append(SQLText(" OR "))
                 for j, sort in enumerate(order_by[: i + 1]):
+                    v = cursor_keys[j]
+
                     if j > 0:
                         and_predicates.append(SQLText(" AND "))
                     if i != j:
-                        sub_predicate = SQLFragment.parse(f"{sort.expr} IS NOT DISTINCT FROM :v", {"v": cursor_keys[j]})
+                        sub_predicate = SQLFragment.parse(f"{sort.expr} IS NOT DISTINCT FROM :v", {"v": v})
                     elif sort.ascending:
-                        sub_predicate = SQLFragment.parse(f"{sort.expr} > :v", {"v": cursor_keys[j]})
+                        sub_predicate = SQLFragment.parse(f"{sort.expr} > :v", {"v": v})
                     else:
-                        sub_predicate = SQLFragment.parse(f"{sort.expr} < :v", {"v": cursor_keys[j]})
+                        sub_predicate = SQLFragment.parse(f"{sort.expr} < :v", {"v": v})
                     and_predicates.append(sub_predicate)
                 or_predicates.append(SQLFragment(*and_predicates))
             cursor_predicates.append(SQLFragment(*or_predicates))
@@ -799,11 +783,11 @@ class AsyncPGSessionBackend(SessionBackend):
         select_items: Collection[SQLFragmentElement],
         from_item: SQLFragmentElement,
         from_as: str,
-        joins: dict[str, StructuredQuery.Join],
+        joins: dict[str, SQLJoinItem],
         having: list[SQLFragment],
         limit: int | None = None,
         offset: int | None = None,
-        order_by: Sequence[StructuredQuery.OrderByOption] = (),
+        order_by: Sequence[SQLOrderByItem] = (),
     ):
         params = []
         select = self._sql_l(self._sql_el(i, params) for i in select_items)
@@ -920,8 +904,8 @@ class AutoMappingBuilder:
         return mappings
 
     def _build_entity_mapping(self, entity_type: type, opts: EntityMappingConfig) -> EntityMapping:
-        field_configs_thunk = opts.get("fields", lambda: {})
-        child_configs_thunk = opts.get("children", lambda: {})
+        field_configs_thunk = opts.get("fields", {})
+        child_configs_thunk = opts.get("children", {})
         field_configs = field_configs_thunk() if callable(field_configs_thunk) else field_configs_thunk
         child_configs = child_configs_thunk() if callable(child_configs_thunk) else child_configs_thunk
 
