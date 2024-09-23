@@ -228,7 +228,7 @@ class StructuredQuery(typing.NamedTuple):
 
     schema: str | None
     table: str
-    select_cols: Collection[str]
+    key_cols: Collection[str]
     alias: str
     joins: dict[str, Join]
     filter_conds: list[SQLFragment]
@@ -279,7 +279,7 @@ class SessionBackend(typing.Protocol):
     async def fetch_structured_query(
         self,
         query: StructuredQuery,
-        order_by: Collection[StructuredQuery.OrderByOption],
+        order_by: Sequence[StructuredQuery.OrderByOption],
         limit: int | None,
         offset: int | None,
     ) -> list[Rec]: ...
@@ -510,7 +510,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         self._query = StructuredQuery(
             schema=self._mapping.schema,
             table=self._mapping.table,
-            select_cols=self._mapping.primary_key.columns,
+            key_cols=self._mapping.primary_key.columns,
             alias=alias,
             joins={},
             filter_conds=[],
@@ -677,33 +677,89 @@ class AsyncPGSessionBackend(SessionBackend):
     async def fetch_structured_query(
         self,
         query: StructuredQuery,
-        order_by: Collection[StructuredQuery.OrderByOption],
+        order_by: Sequence[StructuredQuery.OrderByOption],
         limit: int | None,
         offset: int | None,
     ) -> list[Rec]:
-        sql, params = self._sql_structured_query(query)
-
-        if len(order_by) > 0:
-            sql += " ORDER BY " + ", ".join(
-                "{expr} {direction} {nulls}".format(
-                    expr=self._sql_el(option.expr, params),
-                    direction="ASC" if option.ascending else "DESC",
-                    nulls="NULLS LAST" if option.nulls_last else "NULLS FIRST",
-                )
-                for option in order_by
-            )
-
-        if isinstance(limit, int):
-            sql += f" LIMIT {self._sql_el(SQLVar(limit), params)} "
-
-        if isinstance(offset, int):
-            sql += f" OFFSET {self._sql_el(SQLVar(offset), params)}"
-
+        sql, params = self._sql_select_having(
+            select_items=[SQLName(query.alias, n) for n in query.key_cols],
+            from_item=SQLName(query.schema, query.table),
+            from_as=query.alias,
+            joins=query.joins,
+            having=query.filter_conds,
+            limit=limit,
+            offset=offset,
+            order_by=order_by,
+        )
         records = await self._active.fetch(sql, *params)
-        return [dict(zip(query.select_cols, record)) for record in records]
+        return [dict(zip(query.key_cols, record)) for record in records]
+
+    async def paginate_structured_query(
+        self,
+        query: StructuredQuery,
+        order_by: Sequence[StructuredQuery.OrderByOption],
+        limit: int | None,
+        offset: int | None,
+        cursor: Rec | None,
+    ):
+        cursor_keys: list | None = None
+        if cursor is not None:
+            cursor_condition = [SQLFragment(SQLName(query.alias, k), SQLText(" = "), SQLVar(cursor[k])) for k in cursor]
+            sql, params = self._sql_select_having(
+                select_items=[o.expr for o in order_by],
+                from_item=SQLName(query.schema, query.table),
+                from_as=query.alias,
+                joins=query.joins,
+                having=query.filter_conds + cursor_condition,
+            )
+            records = await self._active.fetch(sql, *params)
+            if records:
+                cursor_keys = records[0]
+
+        cursor_predicates: list[SQLFragment] = []
+        if cursor_keys:
+            or_predicates: list[SQLFragmentElement] = []
+            for i, _ in enumerate(order_by):
+                and_predicates: list[SQLFragmentElement] = []
+
+                if i > 0:
+                    or_predicates.append(SQLText(" OR "))
+                for j, sort in enumerate(order_by[: i + 1]):
+                    if j > 0:
+                        and_predicates.append(SQLText(" AND "))
+                    if i != j:
+                        sub_predicate = SQLFragment.parse(f"{sort.expr} IS NOT DISTINCT FROM :v", {"v": cursor_keys[j]})
+                    elif sort.ascending:
+                        sub_predicate = SQLFragment.parse(f"{sort.expr} > :v", {"v": cursor_keys[j]})
+                    else:
+                        sub_predicate = SQLFragment.parse(f"{sort.expr} < :v", {"v": cursor_keys[j]})
+                    and_predicates.append(sub_predicate)
+                or_predicates.append(SQLFragment(*and_predicates))
+            cursor_predicates.append(SQLFragment(*or_predicates))
+
+        sql, params = self._sql_select_having(
+            select_items=[SQLName(query.alias, n) for n in query.key_cols],
+            from_item=SQLName(query.schema, query.table),
+            from_as=query.alias,
+            joins=query.joins,
+            having=query.filter_conds + cursor_predicates,
+            order_by=order_by,
+            offset=offset,
+            limit=limit,
+        )
+        records = await self._active.fetch(sql, *params)
+        keys = [dict(zip(query.key_cols, record)) for record in records]
+
+        return keys
 
     async def count_structured_query(self, query: StructuredQuery) -> int:
-        sql, params = self._sql_structured_query(query)
+        sql, params = self._sql_select_having(
+            select_items=[SQLName(query.alias, n) for n in query.key_cols],
+            from_item=SQLName(query.schema, query.table),
+            from_as=query.alias,
+            joins=query.joins,
+            having=query.filter_conds,
+        )
         sql = f"SELECT COUNT(*) FROM ({sql}) _;"
         records = await self._active.fetch(sql, *params)
         return records[0][0]
@@ -738,28 +794,50 @@ class AsyncPGSessionBackend(SessionBackend):
         self._active = self._pool
         self._tx = None
 
-    def _sql_structured_query(self, query: StructuredQuery):
+    def _sql_select_having(
+        self,
+        select_items: Collection[SQLFragmentElement],
+        from_item: SQLFragmentElement,
+        from_as: str,
+        joins: dict[str, StructuredQuery.Join],
+        having: list[SQLFragment],
+        limit: int | None = None,
+        offset: int | None = None,
+        order_by: Sequence[StructuredQuery.OrderByOption] = (),
+    ):
         params = []
-        select = self._sql_l(self._sql_qn(query.alias, n) for n in query.select_cols)
-        from_table = self._sql_qn(query.schema, query.table)
-        from_alias = self._sql_q(query.alias)
-
-        sql = f"SELECT {select} FROM {from_table} AS {from_alias}"
-
-        if query.joins:
+        select = self._sql_l(self._sql_el(i, params) for i in select_items)
+        sql = f"SELECT {select} FROM {self._sql_el(from_item, params)} AS {self._sql_q(from_as)}"
+        if joins:
             sql += " " + " ".join(
                 "{join_type} {target_expr} ON {condition_expr}".format(
                     join_type=join.type,
                     target_expr=self._sql_el(join.target, params),
                     condition_expr=self._sql_el(join.on, params),
                 )
-                for join in query.joins.values()
+                for join in joins.values()
             )
 
         sql += f" GROUP BY {select}"
 
-        if query.filter_conds:
-            sql += f" HAVING " + " AND ".join(f"({self._sql_el(cond, params)})" for cond in query.filter_conds)
+        if having:
+            sql += f" HAVING " + " AND ".join(f"({self._sql_el(cond, params)})" for cond in having)
+
+        if len(order_by) > 0:
+            sql += " ORDER BY " + ", ".join(
+                "{expr} {direction} {nulls}".format(
+                    expr=self._sql_el(option.expr, params),
+                    direction="ASC" if option.ascending else "DESC",
+                    nulls="NULLS LAST" if option.nulls_last else "NULLS FIRST",
+                )
+                for option in order_by
+            )
+
+        if isinstance(limit, int):
+            sql += f" LIMIT {self._sql_el(SQLVar(limit), params)} "
+
+        if isinstance(offset, int):
+            sql += f" OFFSET {self._sql_el(SQLVar(offset), params)}"
 
         return sql, params
 
