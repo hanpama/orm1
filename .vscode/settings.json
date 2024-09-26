@@ -2,7 +2,7 @@
     "python.testing.unittestArgs": [
         "-v",
         "-s",
-        "./src/orm1",
+        "./src",
         "-p",
         "test_*.py"
     ],

@@ -322,15 +322,31 @@ class SimpleTest(base.AutoRollbackTestCase):
         assert results[0]["a:a"] == "this is :string"
         assert results[0]["created_at"]
 
-    async def test_root_find_forward(self):
+    async def test_root_query_simple(self):
         s = self.session()
         q = s.query(Purchase, "p").filter(
             "p.user_id = :value",
             value="50dc79f1-06d7-44d3-b1d4-e8db7d982a59",
         )
-        results = await q.fetch(q.desc("p.code"), limit=2)
+        q.order_by(q.desc("p.code"))
+        results = await q.fetch(limit=2)
 
         assert len(results) == 2
 
         assert results[0].code == self.purchase3.code
+        assert results[1].code == self.purchase2.code
+
+    async def test_root_query_joined(self):
+        s = self.session()
+        q = (
+            s.query(Purchase, "p")
+            .join("purchase_line_item", "pli", "pli.purchase_id = p.id")
+            .filter("SUM(pli.quantity) >= :value", value=7)
+        )
+        q.order_by(q.asc("p.code"))
+        results = await q.fetch(limit=2)
+
+        assert len(results) == 2
+
+        assert results[0].code == self.purchase1.code
         assert results[1].code == self.purchase2.code
