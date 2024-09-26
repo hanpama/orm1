@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: docker:27.3.1-cli
     steps:
     - run: docker-compose up -d postgres
     - run: docker-compose run test
