@@ -26,7 +26,7 @@ services:
     volumes:
       - ./src:/app
     working_dir: /app
-    command: tail -f /dev/null
+    command: python3 -m unittest discover -v
     depends_on:
       postgres:
         condition: service_healthy
