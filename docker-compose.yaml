@@ -1,0 +1,30 @@
+version: '3'
+
+services:
+  postgres:
+    image: postgres:16.0-alpine
+    environment:
+    - POSTGRES_PASSWORD=8800bc84f23af727f4e9
+    - POSTGRES_USER=postgres
+    - POSTGRES_DB=postgres
+    ports:
+    - 3200:5432
+    command: ["postgres", "-c", "log_statement=all"]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres]
+      interval: 1s
+      retries: 10
+      start_period: 30s
+      timeout: 10s
+
+  test:
+    build: .
+    environment:
+      - DATABASE_URI=postgres://postgres:8800bc84f23af727f4e9@postgres:5432/postgres
+    volumes:
+      - ./src:/app
+    working_dir: /app
+    command: python3 -m unittest discover -v
+    depends_on:
+      postgres:
+        condition: service_healthy

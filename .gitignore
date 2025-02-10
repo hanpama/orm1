@@ -1,0 +1,8 @@
+.venv/
+build/
+__pycache__/
+dist/
+*.egg-info/
+env/*.env
+.DS_Store
+.coverage
