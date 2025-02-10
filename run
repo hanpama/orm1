@@ -1,0 +1,20 @@
+#!/bin/sh
+COMMAND=$1
+shift
+
+PATH=./venv/bin:$PATH
+export $(cat env/build-secrets.env)
+
+case $COMMAND in
+  build)
+    rm -rf dist \
+    && python3 -m pip install build twine \
+    && python3 -m build
+    ;;
+  publish)
+    python3 -m twine upload dist/*
+    ;;
+  *)
+    echo "Invalid command '$COMMAND'"
+    exit 1
+esac
