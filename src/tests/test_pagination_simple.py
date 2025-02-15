@@ -71,7 +71,7 @@ class PaginationTest(base.AutoRollbackTestCase):
             self.blog_post4,
         )
 
-    async def test_pagination_forward_nulls_last(self) -> None:
+    async def test_asc_forward_nulls_last(self) -> None:
         session = self.session()
 
         q = session.query(BlogPost, "bp")
@@ -95,31 +95,7 @@ class PaginationTest(base.AutoRollbackTestCase):
         self.assertEqual(page.has_next_page, False)
         self.assertEqual(page.has_previous_page, True)
 
-    async def test_pagination_forward_nulls_first(self) -> None:
-        session = self.session()
-
-        q = session.query(BlogPost, "bp")
-        q.order_by(q.desc("bp.rating", nulls_last=False))
-
-        page = await q.paginate(first=2)
-
-        self.assertEqual(page.cursors, [self.blog_post2.id, self.blog_post4.id])
-        self.assertEqual(page.has_next_page, True)
-        self.assertEqual(page.has_previous_page, False)
-
-        page = await q.paginate(first=1, after=page.cursors[1])
-
-        self.assertEqual(page.cursors, [self.blog_post3.id])
-        self.assertEqual(page.has_next_page, True)
-        self.assertEqual(page.has_previous_page, True)
-
-        page = await q.paginate(first=1, after=page.cursors[0])
-
-        self.assertEqual(page.cursors, [self.blog_post1.id])
-        self.assertEqual(page.has_next_page, False)
-        self.assertEqual(page.has_previous_page, True)
-
-    async def test_pagination_backward_nulls_last(self) -> None:
+    async def test_asc_backward_nulls_last(self) -> None:
         session = self.session()
 
         q = session.query(BlogPost, "bp")
@@ -143,7 +119,124 @@ class PaginationTest(base.AutoRollbackTestCase):
         self.assertEqual(page.has_next_page, True)
         self.assertEqual(page.has_previous_page, False)
 
-    async def test_pagination_backward_nulls_first(self) -> None:
+    async def test_asc_forward_nulls_first(self) -> None:
+        session = self.session()
+
+        q = session.query(BlogPost, "bp")
+        q.order_by(q.desc("bp.rating", nulls_last=False))
+
+        page = await q.paginate(first=2)
+
+        self.assertEqual(page.cursors, [self.blog_post2.id, self.blog_post4.id])
+        self.assertEqual(page.has_next_page, True)
+        self.assertEqual(page.has_previous_page, False)
+
+        page = await q.paginate(first=1, after=page.cursors[1])
+
+        self.assertEqual(page.cursors, [self.blog_post3.id])
+        self.assertEqual(page.has_next_page, True)
+        self.assertEqual(page.has_previous_page, True)
+
+        page = await q.paginate(first=1, after=page.cursors[0])
+
+        self.assertEqual(page.cursors, [self.blog_post1.id])
+        self.assertEqual(page.has_next_page, False)
+        self.assertEqual(page.has_previous_page, True)
+
+    async def test_asc_backward_nulls_first(self) -> None:
+        session = self.session()
+
+        q = session.query(BlogPost, "bp")
+        q.order_by(q.asc("bp.rating", nulls_last=False))
+
+        page = await q.paginate(last=2)
+        self.assertEqual(page.cursors, [self.blog_post1.id, self.blog_post3.id])
+        self.assertEqual(page.has_next_page, False)
+        self.assertEqual(page.has_previous_page, True)
+
+        page = await q.paginate(last=1, before=page.cursors[0])
+        self.assertEqual(page.cursors, [self.blog_post4.id])
+        self.assertEqual(page.has_next_page, True)
+        self.assertEqual(page.has_previous_page, True)
+
+        page = await q.paginate(last=1, before=page.cursors[0])
+        self.assertEqual(page.cursors, [self.blog_post2.id])
+        self.assertEqual(page.has_next_page, True)
+        self.assertEqual(page.has_previous_page, False)
+
+    async def test_desc_forward_nulls_last(self) -> None:
+        session = self.session()
+
+        q = session.query(BlogPost, "bp")
+        q.order_by(q.desc("bp.published_at"))
+
+        page = await q.paginate(first=2)
+
+        self.assertEqual(page.cursors, [self.blog_post2.id, self.blog_post1.id])
+        self.assertEqual(page.has_next_page, True)
+        self.assertEqual(page.has_previous_page, False)
+
+        page = await q.paginate(first=1, after=page.cursors[1])
+
+        self.assertEqual(page.cursors, [self.blog_post3.id])
+        self.assertEqual(page.has_next_page, True)
+        self.assertEqual(page.has_previous_page, True)
+
+        page = await q.paginate(first=1, after=page.cursors[0])
+
+        self.assertEqual(page.cursors, [self.blog_post4.id])
+        self.assertEqual(page.has_next_page, False)
+        self.assertEqual(page.has_previous_page, True)
+
+    async def test_desc_backward_nulls_last(self) -> None:
+        session = self.session()
+
+        q = session.query(BlogPost, "bp")
+        q.order_by(q.desc("bp.published_at"))
+
+        page = await q.paginate(last=2)
+
+        self.assertEqual(page.cursors, [self.blog_post3.id, self.blog_post4.id])
+        self.assertEqual(page.has_next_page, False)
+        self.assertEqual(page.has_previous_page, True)
+
+        page = await q.paginate(last=1, before=page.cursors[0])
+
+        self.assertEqual(page.cursors, [self.blog_post1.id])
+        self.assertEqual(page.has_next_page, True)
+        self.assertEqual(page.has_previous_page, True)
+
+        page = await q.paginate(last=1, before=page.cursors[0])
+
+        self.assertEqual(page.cursors, [self.blog_post2.id])
+        self.assertEqual(page.has_next_page, True)
+        self.assertEqual(page.has_previous_page, False)
+
+    async def test_desc_forward_nulls_first(self) -> None:
+        session = self.session()
+
+        q = session.query(BlogPost, "bp")
+        q.order_by(q.desc("bp.rating", nulls_last=False))
+
+        page = await q.paginate(first=2)
+
+        self.assertEqual(page.cursors, [self.blog_post2.id, self.blog_post4.id])
+        self.assertEqual(page.has_next_page, True)
+        self.assertEqual(page.has_previous_page, False)
+
+        page = await q.paginate(first=1, after=page.cursors[1])
+
+        self.assertEqual(page.cursors, [self.blog_post3.id])
+        self.assertEqual(page.has_next_page, True)
+        self.assertEqual(page.has_previous_page, True)
+
+        page = await q.paginate(first=1, after=page.cursors[0])
+
+        self.assertEqual(page.cursors, [self.blog_post1.id])
+        self.assertEqual(page.has_next_page, False)
+        self.assertEqual(page.has_previous_page, True)
+
+    async def test_desc_backward_nulls_first(self) -> None:
         session = self.session()
 
         q = session.query(BlogPost, "bp")
@@ -155,11 +248,13 @@ class PaginationTest(base.AutoRollbackTestCase):
         self.assertEqual(page.has_previous_page, True)
 
         page = await q.paginate(last=1, before=page.cursors[0])
+
         self.assertEqual(page.cursors, [self.blog_post4.id])
         self.assertEqual(page.has_next_page, True)
         self.assertEqual(page.has_previous_page, True)
 
         page = await q.paginate(last=1, before=page.cursors[0])
+
         self.assertEqual(page.cursors, [self.blog_post2.id])
         self.assertEqual(page.has_next_page, True)
         self.assertEqual(page.has_previous_page, False)

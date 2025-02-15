@@ -74,6 +74,8 @@ class Purchase:
     billings: list["PurchaseBilling"]
     withdrawal: "typing.Optional[PurchaseWithdrawal]"
 
+    _private_field = None
+
 
 @dataclass
 @auto.mapped(

@@ -2,6 +2,7 @@ import re
 import types
 import typing
 from typing import Collection, Sequence, Type
+from contextlib import asynccontextmanager
 
 import asyncpg
 import asyncpg.transaction
@@ -101,19 +102,33 @@ class EntityMapping(typing.NamedTuple):
         return {self.fields[f].column: v for f, v in zip(field_names, key)}
 
 
-class SQL(tuple):
-    name = lambda *parts: SQL(("name", parts))
-    text = lambda text: SQL(("text", text))
-    param = lambda id: SQL(("param", id))
-    all = lambda els: SQL(("connective", "AND", tuple(els)))
-    any = lambda els: SQL(("connective", "OR", tuple(els)))
-    eq = lambda left, right: SQL(("infix_op", "=", left, right))
-    lt = lambda left, right: SQL(("infix_op", "<", left, right))
-    gt = lambda left, right: SQL(("infix_op", ">", left, right))
-    is_null = lambda operand: SQL(("postfix_op", "IS NULL", operand))
-    is_not_null = lambda operand: SQL(("postfix_op", "IS NOT NULL", operand))
-    count_distinct = lambda args: SQL(("count_distinct", tuple(args)))
-    fragment = lambda els: SQL(("fragment", tuple(els)))
+sql_n = typing.NamedTuple("sql_n", [("part", str)])
+sql_qn = typing.NamedTuple("sql_qn", [("part1", str), ("part2", str)])
+sql_text = typing.NamedTuple("sql_text", [("text", str)])
+sql_param = typing.NamedTuple("sql_param", [("id", typing.Hashable)])
+sql_all = typing.NamedTuple("sql_all", [("els", typing.Iterable["SQL"])])
+sql_any = typing.NamedTuple("sql_any", [("els", typing.Iterable["SQL"])])
+sql_eq = typing.NamedTuple("sql_eq", [("left", "SQL"), ("right", "SQL")])
+sql_lt = typing.NamedTuple("sql_lt", [("left", "SQL"), ("right", "SQL")])
+sql_gt = typing.NamedTuple("sql_gt", [("left", "SQL"), ("right", "SQL")])
+sql_is_null = typing.NamedTuple("sql_is_null", [("operand", "SQL")])
+sql_is_not_null = typing.NamedTuple("sql_is_not_null", [("operand", "SQL")])
+sql_fragment = typing.NamedTuple("sql_fragment", [("els", typing.Iterable["SQL"])])
+
+SQL = (
+    sql_n
+    | sql_qn
+    | sql_text
+    | sql_param
+    | sql_all
+    | sql_any
+    | sql_eq
+    | sql_lt
+    | sql_gt
+    | sql_is_null
+    | sql_is_not_null
+    | sql_fragment
+)
 
 
 class SQLSelect(typing.NamedTuple):
@@ -133,8 +148,9 @@ class SQLSelect(typing.NamedTuple):
     from_alias: SQL
     joins: Collection[Join] = ()
     where: SQL | None = None
-    distinct_on: Collection[SQL] = ()
     order_bys: Collection[OrderBy] = ()
+    group_by: Collection[SQL] = ()
+    having: SQL | None = None
     limit: SQL | None = None
     offset: SQL | None = None
 
@@ -163,6 +179,7 @@ class SessionBackend(typing.Protocol):
     async def insert(self, stmt: SQLInsert, *param_maps: ParamMap) -> list[Rec]: ...
     async def update(self, stmt: SQLUpdate, *param_maps: ParamMap) -> list[Rec]: ...
     async def delete(self, stmt: SQLDelete, *param_maps: ParamMap): ...
+    async def count(self, stmt: SQLSelect, param_map: ParamMap) -> int: ...
     async def fetch_raw(self, raw: SQL, param_map: ParamMap) -> list[Rec]: ...
     async def begin(self): ...
     async def commit(self): ...
@@ -202,21 +219,22 @@ class Session:
     def raw(self, query: str, **params):
         return SessionRawQuery(self, query, params)
 
-    async def begin(self):
+    @asynccontextmanager
+    async def transaction(self):
         await self._backend.begin()
-
-    async def commit(self):
-        await self._backend.commit()
-
-    async def rollback(self):
-        await self._backend.rollback()
+        try:
+            yield
+            await self._backend.commit()
+        except Exception as e:
+            await self._backend.rollback()
+            raise e
 
     async def _get(self, mapping: EntityMapping, where: list[str], values: list[Rec]):
         select_stmt = SQLSelect(
-            select=[SQL.name("t", c) for c in mapping.selectable_cols],
-            from_table=SQL.name(mapping.schema, mapping.table),
-            from_alias=SQL.name("t"),
-            where=SQL.all(SQL.eq(SQL.name("t", c), SQL.param(i)) for i, c in enumerate(where)),
+            select=[sql_qn("t", c) for c in mapping.selectable_cols],
+            from_table=sql_qn(mapping.schema, mapping.table),
+            from_alias=sql_n("t"),
+            where=sql_all(sql_eq(sql_qn("t", c), sql_param(i)) for i, c in enumerate(where)),
         )
         param_lists = (ParamMap((i, rec[c]) for i, c in enumerate(where)) for rec in values)
         recs = await self._backend.select(select_stmt, *param_lists)
@@ -253,13 +271,12 @@ class Session:
 
         if to_update := [(e, r) for e, r in values if self._in_track(e)]:
             update_stmt = SQLUpdate(
-                table=SQL.name(mapping.schema, mapping.table),
-                sets=[(SQL.name(c), SQL.param(i)) for i, c in enumerate(mapping.updatable_cols)],
-                where=SQL.all(
-                    SQL.eq(SQL.name(c), SQL.param(i + len(mapping.updatable_cols)))
-                    for i, c in enumerate(mapping.primary_cols)
+                table=sql_qn(mapping.schema, mapping.table),
+                sets=[(sql_n(c), sql_param(i)) for i, c in enumerate(mapping.updatable_cols)],
+                where=sql_all(
+                    sql_eq(sql_n(c), sql_param(i + len(mapping.updatable_cols))) for i, c in enumerate(mapping.primary_cols)
                 ),
-                returning=[SQL.name(c) for c in mapping.selectable_cols],
+                returning=[sql_n(c) for c in mapping.selectable_cols],
             )
             columns = [*mapping.updatable_cols, *mapping.primary_cols]
             param_lists = (ParamMap((i, rec[c]) for i, c in enumerate(columns)) for _, rec in to_update)
@@ -269,10 +286,10 @@ class Session:
 
         if to_insert := [(e, r) for e, r in values if not self._in_track(e)]:
             insert_stmt = SQLInsert(
-                into_table=SQL.name(mapping.schema, mapping.table),
-                insert=[SQL.name(c) for c in mapping.insertable_cols],
-                values=[SQL.param(i) for i in range(len(mapping.insertable_cols))],
-                returning=[SQL.name(c) for c in mapping.selectable_cols],
+                into_table=sql_qn(mapping.schema, mapping.table),
+                insert=[sql_n(c) for c in mapping.insertable_cols],
+                values=[sql_param(i) for i in range(len(mapping.insertable_cols))],
+                returning=[sql_n(c) for c in mapping.selectable_cols],
             )
             columns = mapping.insertable_cols
             param_lists = (ParamMap((i, rec[c]) for i, c in enumerate(columns)) for _, rec in to_insert)
@@ -311,8 +328,8 @@ class Session:
 
         recs = [mapping.id_to_record(mapping.id_from_entity(e)) for e in entities]
         stmt = SQLDelete(
-            from_table=SQL.name(mapping.schema, mapping.table),
-            where=SQL.all(SQL.eq(SQL.name(c), SQL.param(i)) for i, c in enumerate(mapping.primary_cols)),
+            from_table=sql_qn(mapping.schema, mapping.table),
+            where=sql_all(sql_eq(sql_n(c), sql_param(i)) for i, c in enumerate(mapping.primary_cols)),
         )
         param_maps = (ParamMap((i, rec[c]) for i, c in enumerate(mapping.primary_cols)) for rec in recs)
         await self._backend.delete(stmt, *param_maps)
@@ -326,15 +343,15 @@ class Session:
         offset_ref = query.ctx.new_param_id()
         params.update({limit_ref: limit, offset_ref: offset})
         select_stmt = SQLSelect(
-            select=[SQL.name(query.alias, c) for c in query.mapping.selectable_cols],
-            distinct_on=[o.expr for o in query.order_bys] + [SQL.name(query.alias, c) for c in query.mapping.primary_cols],
-            from_table=SQL.name(query.mapping.schema, query.mapping.table),
-            from_alias=SQL.name(query.alias),
+            select=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            from_table=sql_qn(query.mapping.schema, query.mapping.table),
+            from_alias=sql_n(query.alias),
             joins=query.joins.values(),
-            where=SQL.all(query.filters) if query.filters else None,
-            order_bys=query.order_bys,
-            limit=SQL.param(limit_ref),
-            offset=SQL.param(offset_ref),
+            group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            having=sql_all(query.filters) if query.filters else None,
+            order_bys=query.order_by_opts,
+            limit=sql_param(limit_ref),
+            offset=sql_param(offset_ref),
         )
         recs = await self._backend.select(select_stmt, params)
         ids = [query.mapping.id_from_record(rec) for rec in recs]
@@ -342,14 +359,14 @@ class Session:
 
     async def count_session_entity_query(self, query: "SessionEntityQuery"):
         select_stmt = SQLSelect(
-            select=[SQL.count_distinct(SQL.name(query.alias, c) for c in query.mapping.primary_cols)],
-            from_table=SQL.name(query.mapping.schema, query.mapping.table),
-            from_alias=SQL.name(query.alias),
+            select=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            from_table=sql_qn(query.mapping.schema, query.mapping.table),
+            from_alias=sql_n(query.alias),
             joins=query.joins.values(),
-            where=SQL.all(query.filters) if query.filters else None,
+            group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            having=sql_all(query.filters) if query.filters else None,
         )
-        recs = await self._backend.select(select_stmt, query.params)
-        return recs[0]["count"]
+        return await self._backend.count(select_stmt, query.params)
 
     class PageOpts(typing.NamedTuple):
         first: int | None
@@ -366,9 +383,9 @@ class Session:
     async def paginate_session_entity_query(self, query: "SessionEntityQuery", opts: PageOpts):
         first, after, last, before, offset = opts
 
-        order_by = [*query.order_bys]
+        order_by = [*query.order_by_opts]
         for c in query.mapping.primary_cols:
-            order_by.append(SQLSelect.OrderBy(SQL.name(query.alias, c)))
+            order_by.append(SQLSelect.OrderBy(sql_qn(query.alias, c)))
         if last is not None:
             order_by = [SQLSelect.OrderBy(o.expr, not o.ascending, not o.nulls_last) for o in order_by]
 
@@ -392,15 +409,15 @@ class Session:
         params.update({limit_ref: limit + 1 if limit else None, offset_ref: offset})
 
         select_stmt = SQLSelect(
-            select=[SQL.name(query.alias, c) for c in query.mapping.primary_cols],
-            distinct_on=[opt.expr for opt in order_by],
-            from_table=SQL.name(query.mapping.schema, query.mapping.table),
-            from_alias=SQL.name(query.alias),
-            where=SQL.all(filters) if filters else None,
+            select=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            from_table=sql_qn(query.mapping.schema, query.mapping.table),
+            from_alias=sql_n(query.alias),
             joins=query.joins.values(),
+            group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            having=sql_all(filters) if filters else None,
             order_bys=order_by,
-            limit=SQL.param(limit_ref),
-            offset=SQL.param(offset_ref),
+            limit=sql_param(limit_ref),
+            offset=sql_param(offset_ref),
         )
         records = await self._backend.select(select_stmt, params)
 
@@ -420,43 +437,45 @@ class Session:
     async def _fetch_cursor_rec(self, query: "SessionEntityQuery", order_bys: Sequence[SQLSelect.OrderBy], cursor: Key):
         cursor_rec = query.mapping.id_to_record(cursor)
         params = ParamMap(query.params)
-        filters = list(query.filters)
+        filters = query.filters.copy()
         for c in query.mapping.primary_cols:
             param_id = query.ctx.new_param_id()
             params[param_id] = cursor_rec[c]
-            filters.append(SQL.eq(SQL.name(query.alias, c), SQL.param(param_id)))
+            filters.append(sql_eq(sql_qn(query.alias, c), sql_param(param_id)))
 
         select_stmt = SQLSelect(
             select=[o.expr for o in order_bys],
-            from_table=SQL.name(query.mapping.schema, query.mapping.table),
-            from_alias=SQL.name(query.alias),
-            where=SQL.all(filters),
+            from_table=sql_qn(query.mapping.schema, query.mapping.table),
+            from_alias=sql_n(query.alias),
+            joins=query.joins.values(),
+            group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            having=sql_all(filters),
         )
         recs = await self._backend.select(select_stmt, params)
         return recs[0] if recs else None
 
     def _format_cursor_predicate(self, order_bys: list[SQLSelect.OrderBy], params: ParamMap, is_forward: bool):
-        param_refs = [SQL.param(i) for i in params]
+        param_refs = [sql_param(i) for i in params]
         or_predicates: list[SQL] = []
         for i, _ in enumerate(order_bys):
             and_predicates: list[SQL] = []
             for j, sort in enumerate(order_bys[: i + 1]):
                 v = param_refs[j]
                 if i != j:
-                    comp = SQL.eq(v, sort.expr)
+                    comp = sql_eq(v, sort.expr)
                 elif sort.ascending == is_forward:
-                    comp = SQL.lt(v, sort.expr)
+                    comp = sql_lt(v, sort.expr)
                 else:
-                    comp = SQL.gt(v, sort.expr)
+                    comp = sql_gt(v, sort.expr)
                 if i != j:
-                    null = SQL.all((SQL.is_null(v), SQL.is_null(sort.expr)))
+                    null = sql_all((sql_is_null(v), sql_is_null(sort.expr)))
                 elif sort.nulls_last == is_forward:
-                    null = SQL.all((SQL.is_not_null(v), SQL.is_null(sort.expr)))
+                    null = sql_all((sql_is_not_null(v), sql_is_null(sort.expr)))
                 else:
-                    null = SQL.all((SQL.is_null(v), SQL.is_not_null(sort.expr)))
-                and_predicates.append(SQL.any((comp, null)))
-            or_predicates.append(SQL.all(and_predicates))
-        return SQL.any(or_predicates)
+                    null = sql_all((sql_is_null(v), sql_is_not_null(sort.expr)))
+                and_predicates.append(sql_any((comp, null)))
+            or_predicates.append(sql_all(and_predicates))
+        return sql_any(or_predicates)
 
     async def fetch_raw_query(self, query: "SessionRawQuery"):
         return await self._backend.fetch_raw(query.fragment, query.params)
@@ -515,11 +534,11 @@ class SQLBuildingContext:
                     param_id = self.new_param_id()
                     param_index_map[param_name] = param_id
                     param_map[param_id] = params[param_name]
-                tokens.append(SQL.param(param_id))
+                tokens.append(sql_param(param_id))
             else:
-                tokens.append(SQL.text(word))
+                tokens.append(sql_text(word))
 
-        return SQL.fragment(tokens), param_map
+        return sql_fragment(tokens), param_map
 
     def new_param_id(self):
         param_id = self._param_pointer
@@ -546,14 +565,14 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         self.params = ParamMap()
         self.joins = dict[str, SQLSelect.Join]()
         self.filters = list[SQL]()
-        self.order_bys = tuple[SQLSelect.OrderBy, ...]()
+        self.order_by_opts = tuple[SQLSelect.OrderBy, ...]()
         self.ctx = SQLBuildingContext()
 
     def join(self, target: type | str, alias: str, on: str, **params):
         self.joins[alias] = SQLSelect.Join(
             type="JOIN",
             table=self._get_target(target, params),
-            alias=SQL.name(alias),
+            alias=sql_n(alias),
             on=self._parse(on, params),
         )
         return self
@@ -562,7 +581,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         self.joins[alias] = SQLSelect.Join(
             type="LEFT JOIN",
             table=self._get_target(target, params),
-            alias=SQL.name(alias),
+            alias=sql_n(alias),
             on=self._parse(on, params),
         )
         return self
@@ -572,7 +591,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         return self
 
     def order_by(self, *order_by: SQLSelect.OrderBy):
-        self.order_bys = order_by
+        self.order_by_opts = order_by
         return self
 
     async def fetch(self, limit: int | None = None, offset: int | None = None):
@@ -607,7 +626,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         if isinstance(target, str):
             return self._parse(target, params)
         target_mapping = self._session.get_mapping(target)
-        return SQL.name(target_mapping.schema, target_mapping.table)
+        return sql_qn(target_mapping.schema, target_mapping.table)
 
     def _parse(self, sql: str, params: dict):
         fragment, params = self.ctx.parse(sql, params)
@@ -653,6 +672,11 @@ class AsyncPGSessionBackend(SessionBackend):
         query, param_lists = self.Renderer().render_delete(stmt, *param_maps)
         await self._active.executemany(query, param_lists)
 
+    async def count(self, stmt: SQLSelect, param_map: ParamMap):
+        query, param_list = self.Renderer().render_count(stmt, param_map)
+        records = await self._active.fetch(query, *param_list)
+        return records[0]["count"]
+
     async def fetch_raw(self, raw: SQL, param_map: ParamMap):
         query, param_list = self.Renderer().render_raw(raw, param_map)
         records = await self._active.fetch(query, *param_list)
@@ -690,14 +714,16 @@ class AsyncPGSessionBackend(SessionBackend):
 
         def render_select(self, stmt: SQLSelect, *param_maps: ParamMap):
             parts = ["SELECT"]
-            if stmt.distinct_on:
-                parts.append(f"DISTINCT ON ({', '.join(self._el(i) for i in stmt.distinct_on)})")
             parts.append(", ".join(self._el(i) for i in stmt.select))
             parts.append(f"FROM {self._el(stmt.from_table)} AS {self._el(stmt.from_alias)}")
             for join in stmt.joins:
                 parts.append(self._sql_join_opt(join))
             if stmt.where:
                 parts.append(f"WHERE {self._el(stmt.where)}")
+            if stmt.group_by:
+                parts.append(f"GROUP BY {', '.join(self._el(i) for i in stmt.group_by)}")
+            if stmt.having:
+                parts.append(f"HAVING {self._el(stmt.having)}")
             if stmt.order_bys:
                 parts.append(f"ORDER BY {', '.join(self._sql_order_opt(opt) for opt in stmt.order_bys)}")
             if stmt.limit:
@@ -719,7 +745,7 @@ class AsyncPGSessionBackend(SessionBackend):
 
         def render_update(self, stmt: SQLUpdate, *param_maps: ParamMap):
             parts = ["UPDATE", self._el(stmt.table)]
-            parts.append(f"SET {', '.join(f'{self._el(l)} = {self._el(r)}' for l, r in stmt.sets)}")
+            parts.append(f"SET {', '.join(f'{self._el(k)} = {self._el(v)}' for k, v in stmt.sets)}")
             parts.append(f"WHERE {self._el(stmt.where)}")
             parts.append(f"RETURNING {', '.join(self._el(i) for i in stmt.returning)}")
             query = " ".join(parts)
@@ -732,6 +758,10 @@ class AsyncPGSessionBackend(SessionBackend):
             query = " ".join(parts)
             param_lists = [self._ctx.format_params(param_map) for param_map in param_maps]
             return query, param_lists
+
+        def render_count(self, stmt: SQLSelect, param_map: ParamMap):
+            select_query, params = self.render_select(stmt, param_map)
+            return f"SELECT COUNT(*) FROM ({select_query}) AS _", params[0]
 
         def render_raw(self, raw: SQL, param_map: ParamMap):
             return self._el(raw), self._ctx.format_params(param_map)
@@ -746,25 +776,30 @@ class AsyncPGSessionBackend(SessionBackend):
 
         def _el(self, el: SQL):
             match el:
-                case ("name", parts):
-                    return ".".join('"' + p.replace('"', '""') + '"' for p in parts)
-                case ("text", text):
+                case sql_n(part1):
+                    return f'"{part1.replace(".", '"."')}"'
+                case sql_qn(part1, part2):
+                    return f'"{part1.replace(".", '"."')}"."{part2.replace('"', '""')}"'
+                case sql_text(text):
                     return text
-                case ("param", id):
+                case sql_param(id):
                     return f"${self._ctx.locate_param(id) + 1}"
-                case ("connective", op, elements):
-                    if len(elements) == 1:
-                        return self._el(elements[0])
-                    return f"({f' {op} '.join(self._el(e) for e in elements)})"
-                case ("postfix_op", op, operand):
-                    return f"({self._el(operand)} {op})"
-                case ("infix_op", op, left, right):
-                    return f"({self._el(left)} {op} {self._el(right)})"
-                case ("count_distinct", args):
-                    return f"COUNT(DISTINCT {', '.join(self._el(a) for a in args)})"
-                case ("fragment", elements):
+                case sql_all(els):
+                    return f"({' AND '.join(self._el(e) for e in els)})"
+                case sql_any(els):
+                    return f"({' OR '.join(self._el(e) for e in els)})"
+                case sql_eq(left, right):
+                    return f"{self._el(left)} = {self._el(right)}"
+                case sql_lt(left, right):
+                    return f"{self._el(left)} < {self._el(right)}"
+                case sql_gt(left, right):
+                    return f"{self._el(left)} > {self._el(right)}"
+                case sql_is_null(expr):
+                    return f"{self._el(expr)} IS NULL"
+                case sql_is_not_null(expr):
+                    return f"{self._el(expr)} IS NOT NULL"
+                case sql_fragment(elements):
                     return "".join(self._el(e) for e in elements)
-            raise ValueError(f"Invalid SQL element: {el}")
 
 
 class AutoMappingBuilder:
@@ -786,8 +821,9 @@ class AutoMappingBuilder:
         children: dict[str, "AutoMappingBuilder.ChildConfig"]
         factory: EntityFactory
 
-    _configs = dict[type, EntityMappingConfig]()
-    _mappings = dict[type, EntityMapping]()
+    def __init__(self):
+        self._configs = dict[type, self.EntityMappingConfig]()
+        self._mappings = dict[type, EntityMapping]()
 
     def map(self, entity_type: type, **kwargs: typing.Unpack[EntityMappingConfig]):
         self._configs[entity_type] = kwargs

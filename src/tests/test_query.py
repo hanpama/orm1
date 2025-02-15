@@ -135,13 +135,31 @@ class QueryTestCase(AutoRollbackTestCase):
         assert len(result) == 1
         assert result[0].id == 3
 
+    async def test_filter_fetch_one(self):
+        session = self.session()
+        query = session.query(BlogPost, "bp")
+        query.filter("LENGTH(bp.title) = 10")
+        query.filter("bp.id > 1")
+        result = await query.fetch_one()
+
+        assert result
+        assert result.id == 3
+
+    async def test_filter_fetch_one_null(self):
+        session = self.session()
+        query = session.query(BlogPost, "bp")
+        query.filter("FALSE")
+        result = await query.fetch_one()
+
+        assert result is None
+
     async def test_join(self):
         session = self.session()
         query = session.query(BlogPost, "bp")
         query.join(BlogPostComment, "bpc", "bp.id = bpc.blog_post_id")
-        query.left_join(BlogPostTag, "bpt", "bp.id = bpt.blog_post_id")
-        query.filter("bpc.rating <= 3")
-        query.filter("bpt.tag IS NULL")
+        query.left_join("test_query.blog_post_tag", "bpt", "bp.id = bpt.blog_post_id")
+        query.filter("bool_or(bpc.rating <= 3)")
+        query.filter("bool_or(bpt.tag IS NULL)")
         result = await query.fetch()
 
         assert len(result) == 1
@@ -168,8 +186,8 @@ class QueryTestCase(AutoRollbackTestCase):
         query = session.query(BlogPost, "bp")
         query.join(BlogPostComment, "bpc", "bp.id = bpc.blog_post_id")
         query.left_join(BlogPostTag, "bpt", "bp.id = bpt.blog_post_id")
-        query.filter("bpc.rating <= 3")
-        query.filter("bpt.tag IS NULL")
+        query.filter("bool_or(bpc.rating <= 3)")
+        query.filter("bool_or(bpt.tag IS NULL)")
         query.order_by(query.asc("bp.content"), query.desc("bp.id"))
         result = await query.fetch()
 
@@ -191,3 +209,18 @@ class QueryTestCase(AutoRollbackTestCase):
 
         assert len(result) == 1
         assert result[0]["id"] == 3
+
+    async def test_raw_query_fetch_one(self):
+        session = self.session()
+        result = await session.raw(
+            """
+            SELECT bp.id, COUNT(bpc.id) AS comment_count
+            FROM test_query.blog_post bp
+            LEFT JOIN test_query.blog_post_comment bpc ON bp.id = bpc.blog_post_id
+            GROUP BY bp.id
+            HAVING COUNT(bpc.id) = :count
+            """,
+            count=0,
+        ).fetch_one()
+
+        assert result
