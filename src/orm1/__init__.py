@@ -512,9 +512,6 @@ class Session:
         scope[mapping.id_from_entity(entity)] = entity
 
     def _untrack(self, mapping: EntityMapping, parental_key: Key, id: Key):
-        # mapping = self.get_mapping(type(entity))
-        # parental_key = mapping.parental_key_from_entity(entity)
-        # id = mapping.id_from_entity(entity)
         self._idm[(mapping.entity_type, parental_key)].pop(id, None)
 
     def _in_track(self, entity: Entity):
