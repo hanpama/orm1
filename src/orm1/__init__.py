@@ -172,13 +172,14 @@ class SQLUpdate(typing.NamedTuple):
 class SQLDelete(typing.NamedTuple):
     from_table: SQL
     where: SQL
+    returning: Collection[SQL]
 
 
 class SessionBackend(typing.Protocol):
     async def select(self, stmt: SQLSelect, *param_maps: ParamMap) -> list[Rec]: ...
     async def insert(self, stmt: SQLInsert, *param_maps: ParamMap) -> list[Rec]: ...
     async def update(self, stmt: SQLUpdate, *param_maps: ParamMap) -> list[Rec]: ...
-    async def delete(self, stmt: SQLDelete, *param_maps: ParamMap): ...
+    async def delete(self, stmt: SQLDelete, *param_maps: ParamMap) -> list[Rec]: ...
     async def count(self, stmt: SQLSelect, param_map: ParamMap) -> int: ...
     async def fetch_raw(self, raw: SQL, param_map: ParamMap) -> list[Rec]: ...
     async def begin(self): ...
@@ -199,7 +200,7 @@ class Session:
         await self.batch_save(type(entity), entity)
 
     async def delete(self, entity: Entity):
-        await self.batch_delete(type(entity), entity)
+        return (await self.batch_delete(type(entity), entity))[0]
 
     async def batch_get(self, entity_type: Type[TEntity], ids: typing.Iterable[typing.Any]):
         mapping = self.get_mapping(entity_type)
@@ -211,7 +212,7 @@ class Session:
         await self._save(mapping, ((mapping.parental_key_from_entity(e), e) for e in entities))
 
     async def batch_delete(self, entity_type: Type[TEntity], *entities: TEntity):
-        await self._delete(self.get_mapping(entity_type), entities)
+        return await self._delete(self.get_mapping(entity_type), entities)
 
     def query(self, entity_type: Type[TEntity], alias: str):
         return SessionEntityQuery[TEntity](self, self.get_mapping(entity_type), alias)
@@ -220,13 +221,15 @@ class Session:
         return SessionRawQuery(self, query, params)
 
     @asynccontextmanager
-    async def transaction(self):
+    async def tx(self):
+        prev_idm = {k: dict(v) for k, v in self._idm.items()}
         await self._backend.begin()
         try:
             yield
             await self._backend.commit()
         except Exception as e:
             await self._backend.rollback()
+            self._idm = prev_idm
             raise e
 
     async def _get(self, mapping: EntityMapping, where: list[str], values: list[Rec]):
@@ -281,8 +284,8 @@ class Session:
             columns = [*mapping.updatable_cols, *mapping.primary_cols]
             param_lists = (ParamMap((i, rec[c]) for i, c in enumerate(columns)) for _, rec in to_update)
             updated_recs = await self._backend.update(update_stmt, *param_lists)
-            for (entity, _), rec in zip(to_update, updated_recs):
-                mapping.write_to_entity(entity, rec)
+            for i in range(len(to_update)):
+                mapping.write_to_entity(to_update[i][0], updated_recs[i])
 
         if to_insert := [(e, r) for e, r in values if not self._in_track(e)]:
             insert_stmt = SQLInsert(
@@ -294,20 +297,24 @@ class Session:
             columns = mapping.insertable_cols
             param_lists = (ParamMap((i, rec[c]) for i, c in enumerate(columns)) for _, rec in to_insert)
             inserted_recs = await self._backend.insert(insert_stmt, *param_lists)
-            for (entity, _), rec in zip(to_insert, inserted_recs):
-                mapping.write_to_entity(entity, rec)
-                self._track(entity)
+            for i in range(len(to_insert)):
+                mapping.write_to_entity(to_insert[i][0], inserted_recs[i])
+                self._track(to_insert[i][0])
 
         for child in mapping.children.values():
             child_mapping = self.get_mapping(child.target)
             to_delete = list[Entity]()
             to_save = list[tuple[Key, Entity]]()
-            for entity, _ in values:
+            for entity, _ in to_update:
                 id = mapping.id_from_entity(entity)
                 child_entities = child.getter(entity)
                 current_ids = {child_mapping.id_from_entity(e) for e in child_entities}
                 previous_ids = self._get_tracked_children(child_mapping, id)
                 to_delete.extend(previous_ids[id] for id in previous_ids if id not in current_ids)
+
+            for entity, _ in values:
+                id = mapping.id_from_entity(entity)
+                child_entities = child.getter(entity)
                 to_save.extend((id, child_entity) for child_entity in child_entities)
 
             if to_delete:
@@ -330,12 +337,19 @@ class Session:
         stmt = SQLDelete(
             from_table=sql_qn(mapping.schema, mapping.table),
             where=sql_all(sql_eq(sql_n(c), sql_param(i)) for i, c in enumerate(mapping.primary_cols)),
+            returning=[sql_n(c) for c in mapping.primary_cols + mapping.parental_cols],
         )
         param_maps = (ParamMap((i, rec[c]) for i, c in enumerate(mapping.primary_cols)) for rec in recs)
-        await self._backend.delete(stmt, *param_maps)
+        deleted_recs = await self._backend.delete(stmt, *param_maps)
 
-        for entity in entities:
-            self._untrack(entity)
+        deleted = dict[Key, bool]()
+        for rec in deleted_recs:
+            id = mapping.id_from_record(rec)
+            parental_key = mapping.parental_key_from_record(rec)
+            self._untrack(mapping, parental_key, id)
+            deleted[id] = True
+
+        return [deleted.get(id, False) for id in ids]
 
     async def fetch_session_entity_query(self, query: "SessionEntityQuery", limit: int | None, offset: int | None):
         params = ParamMap(query.params)
@@ -347,8 +361,9 @@ class Session:
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
+            where=sql_all(query.where_conds) if query.where_conds else None,
             group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
-            having=sql_all(query.filters) if query.filters else None,
+            having=sql_all(query.having_conds) if query.having_conds else None,
             order_bys=query.order_by_opts,
             limit=sql_param(limit_ref),
             offset=sql_param(offset_ref),
@@ -363,8 +378,9 @@ class Session:
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
+            where=sql_all(query.where_conds) if query.where_conds else None,
             group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
-            having=sql_all(query.filters) if query.filters else None,
+            having=sql_all(query.having_conds) if query.having_conds else None,
         )
         return await self._backend.count(select_stmt, query.params)
 
@@ -390,7 +406,7 @@ class Session:
             order_by = [SQLSelect.OrderBy(o.expr, not o.ascending, not o.nulls_last) for o in order_by]
 
         params = ParamMap(query.params)
-        filters = query.filters.copy()
+        filters = query.having_conds.copy()
 
         if after_rec := await self._fetch_cursor_rec(query, order_by, after) if after else None:
             after_params = ParamMap((query.ctx.new_param_id(), v) for v in after_rec.values())
@@ -413,6 +429,7 @@ class Session:
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
+            where=sql_all(query.where_conds) if query.where_conds else None,
             group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
             having=sql_all(filters) if filters else None,
             order_bys=order_by,
@@ -437,7 +454,7 @@ class Session:
     async def _fetch_cursor_rec(self, query: "SessionEntityQuery", order_bys: Sequence[SQLSelect.OrderBy], cursor: Key):
         cursor_rec = query.mapping.id_to_record(cursor)
         params = ParamMap(query.params)
-        filters = query.filters.copy()
+        filters = query.having_conds.copy()
         for c in query.mapping.primary_cols:
             param_id = query.ctx.new_param_id()
             params[param_id] = cursor_rec[c]
@@ -448,6 +465,7 @@ class Session:
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
+            where=sql_all(query.where_conds) if query.where_conds else None,
             group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
             having=sql_all(filters),
         )
@@ -493,10 +511,10 @@ class Session:
         scope = self._idm.setdefault((mapping.entity_type, parental_key), {})
         scope[mapping.id_from_entity(entity)] = entity
 
-    def _untrack(self, entity: Entity):
-        mapping = self.get_mapping(type(entity))
-        parental_key = mapping.parental_key_from_entity(entity)
-        id = mapping.id_from_entity(entity)
+    def _untrack(self, mapping: EntityMapping, parental_key: Key, id: Key):
+        # mapping = self.get_mapping(type(entity))
+        # parental_key = mapping.parental_key_from_entity(entity)
+        # id = mapping.id_from_entity(entity)
         self._idm[(mapping.entity_type, parental_key)].pop(id, None)
 
     def _in_track(self, entity: Entity):
@@ -564,7 +582,8 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         self.alias = alias
         self.params = ParamMap()
         self.joins = dict[str, SQLSelect.Join]()
-        self.filters = list[SQL]()
+        self.where_conds = list[SQL]()
+        self.having_conds = list[SQL]()
         self.order_by_opts = tuple[SQLSelect.OrderBy, ...]()
         self.ctx = SQLBuildingContext()
 
@@ -586,8 +605,12 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         )
         return self
 
-    def filter(self, condition: str, **params):
-        self.filters.append(self._parse(condition, params))
+    def where(self, condition: str, **params):
+        self.where_conds.append(self._parse(condition, params))
+        return self
+
+    def having(self, condition: str, **params):
+        self.having_conds.append(self._parse(condition, params))
         return self
 
     def order_by(self, *order_by: SQLSelect.OrderBy):
@@ -670,7 +693,8 @@ class AsyncPGSessionBackend(SessionBackend):
 
     async def delete(self, stmt: SQLDelete, *param_maps: ParamMap):
         query, param_lists = self.Renderer().render_delete(stmt, *param_maps)
-        await self._active.executemany(query, param_lists)
+        records = await self._active.fetchmany(query, param_lists)
+        return [dict(rec.items()) for rec in records]
 
     async def count(self, stmt: SQLSelect, param_map: ParamMap):
         query, param_list = self.Renderer().render_count(stmt, param_map)
@@ -755,6 +779,7 @@ class AsyncPGSessionBackend(SessionBackend):
         def render_delete(self, stmt: SQLDelete, *param_maps: ParamMap):
             parts = ["DELETE FROM", self._el(stmt.from_table)]
             parts.append(f"WHERE {self._el(stmt.where)}")
+            parts.append(f"RETURNING {', '.join(self._el(i) for i in stmt.returning)}")
             query = " ".join(parts)
             param_lists = [self._ctx.format_params(param_map) for param_map in param_maps]
             return query, param_lists

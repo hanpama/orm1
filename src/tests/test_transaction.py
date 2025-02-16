@@ -1,11 +1,11 @@
 import unittest
+from dataclasses import dataclass
 
 import asyncpg
 
 from orm1 import AsyncPGSessionBackend, Session, auto
 
 from .base import get_database_uri
-
 
 schema_set_up = """
     DO $$ BEGIN
@@ -25,6 +25,7 @@ schema_tear_down = """
 """
 
 
+@dataclass
 @auto.mapped(schema="test_transaction")
 class BlogPost:
     id: int
@@ -55,39 +56,165 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
     def session(self):
         return Session(self._backend, auto.build())
 
-    async def test_commit(self) -> None:
+    async def test_insert_commit_get(self) -> None:
         session = self.session()
 
-        async with session.transaction():
-            await session.raw(
-                "INSERT INTO test_transaction.blog_post (id, title, content) VALUES (:id, :title, :content)",
-                id=1,
-                title="First post",
-                content="Content C",
-            ).fetch()
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        async with session.tx():
+            await session.save(blog_post)
 
         got = await session.get(BlogPost, 1)
-        assert got
+        assert got is not None
+        assert got is blog_post
         assert got.id == 1
         assert got.title == "First post"
-        assert got.content == "Content C"
+        assert got.content == "Content A"
 
-        await session.delete(got)
+        await session.save(blog_post)
 
-    async def test_rollback(self) -> None:
+    async def test_insert_commit_save(self) -> None:
         session = self.session()
-        try:
-            async with session.transaction():
-                await session.raw(
-                    "INSERT INTO test_transaction.blog_post (id, title, content) VALUES (:id, :title, :content)",
-                    id=1,
-                    title="First post",
-                    content="Content C",
-                ).fetch()
 
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        async with session.tx():
+            await session.save(blog_post)
+
+        await session.save(blog_post)
+
+    async def test_insert_commit_delete(self) -> None:
+        session = self.session()
+
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        async with session.tx():
+            await session.save(blog_post)
+
+        await session.delete(blog_post)
+
+    async def test_insert_rollback_get(self) -> None:
+        session = self.session()
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        try:
+            async with session.tx():
+                await session.save(blog_post)
                 raise Exception("rollback")
         except Exception as e:
             assert str(e) == "rollback"
 
         got = await session.get(BlogPost, 1)
-        assert not got
+        assert got is None
+
+    async def test_insert_rollback_save(self) -> None:
+        session = self.session()
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        try:
+            async with session.tx():
+                await session.save(blog_post)
+                raise Exception("rollback")
+        except Exception as e:
+            assert str(e) == "rollback"
+
+        await session.save(blog_post)
+
+    async def test_insert_rollback_delete(self) -> None:
+        session = self.session()
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        try:
+            async with session.tx():
+                await session.save(blog_post)
+                raise Exception("rollback")
+        except Exception as e:
+            assert str(e) == "rollback"
+
+        deleted = await session.delete(blog_post)
+        assert not deleted
+
+    async def test_delete_commit_get(self) -> None:
+        session = self.session()
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        await session.save(blog_post)
+
+        async with session.tx():
+            assert await session.delete(blog_post)
+
+        got = await session.get(BlogPost, 1)
+        assert got is None
+
+    async def test_delete_commit_save(self) -> None:
+        session = self.session()
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        await session.save(blog_post)
+
+        async with session.tx():
+            await session.delete(blog_post)
+
+        await session.save(blog_post)
+
+    async def test_delete_rollback_get(self) -> None:
+        session = self.session()
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        await session.save(blog_post)
+
+        try:
+            async with session.tx():
+                assert await session.delete(blog_post)
+                raise Exception("rollback")
+        except Exception as e:
+            assert str(e) == "rollback"
+
+        got = await session.get(BlogPost, 1)
+        assert got is not None
+        assert got is blog_post
+
+    async def test_delete_rollback_save(self) -> None:
+        session = self.session()
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        await session.save(blog_post)
+
+        try:
+            async with session.tx():
+                assert await session.delete(blog_post)
+                raise Exception("rollback")
+        except Exception as e:
+            assert str(e) == "rollback"
+
+        await session.save(blog_post)

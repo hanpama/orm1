@@ -128,8 +128,8 @@ class QueryTestCase(AutoRollbackTestCase):
     async def test_filter(self):
         session = self.session()
         query = session.query(BlogPost, "bp")
-        query.filter("LENGTH(bp.title) = 10")
-        query.filter("bp.id > 1")
+        query.where("LENGTH(bp.title) = 10")
+        query.where("bp.id > 1")
         result = await query.fetch()
 
         assert len(result) == 1
@@ -138,8 +138,8 @@ class QueryTestCase(AutoRollbackTestCase):
     async def test_filter_fetch_one(self):
         session = self.session()
         query = session.query(BlogPost, "bp")
-        query.filter("LENGTH(bp.title) = 10")
-        query.filter("bp.id > 1")
+        query.where("LENGTH(bp.title) = 10")
+        query.where("bp.id > 1")
         result = await query.fetch_one()
 
         assert result
@@ -148,7 +148,7 @@ class QueryTestCase(AutoRollbackTestCase):
     async def test_filter_fetch_one_null(self):
         session = self.session()
         query = session.query(BlogPost, "bp")
-        query.filter("FALSE")
+        query.where("FALSE")
         result = await query.fetch_one()
 
         assert result is None
@@ -158,8 +158,8 @@ class QueryTestCase(AutoRollbackTestCase):
         query = session.query(BlogPost, "bp")
         query.join(BlogPostComment, "bpc", "bp.id = bpc.blog_post_id")
         query.left_join("test_query.blog_post_tag", "bpt", "bp.id = bpt.blog_post_id")
-        query.filter("bool_or(bpc.rating <= 3)")
-        query.filter("bool_or(bpt.tag IS NULL)")
+        query.where("bpt.tag IS NULL")
+        query.having("every(bpc.rating <= 3)")
         result = await query.fetch()
 
         assert len(result) == 1
@@ -176,7 +176,7 @@ class QueryTestCase(AutoRollbackTestCase):
     async def test_count(self):
         session = self.session()
         query = session.query(BlogPost, "bp")
-        query.filter("bp.content = 'Content B'")
+        query.where("bp.content = 'Content B'")
         result = await query.count()
 
         assert result == 2
@@ -186,8 +186,8 @@ class QueryTestCase(AutoRollbackTestCase):
         query = session.query(BlogPost, "bp")
         query.join(BlogPostComment, "bpc", "bp.id = bpc.blog_post_id")
         query.left_join(BlogPostTag, "bpt", "bp.id = bpt.blog_post_id")
-        query.filter("bool_or(bpc.rating <= 3)")
-        query.filter("bool_or(bpt.tag IS NULL)")
+        query.where("bpc.rating <= 3")
+        query.where("bpt.tag IS NULL")
         query.order_by(query.asc("bp.content"), query.desc("bp.id"))
         result = await query.fetch()
 
