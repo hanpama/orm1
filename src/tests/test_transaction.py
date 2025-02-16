@@ -109,12 +109,15 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
             title="First post",
             content="Content A",
         )
+        rollback_err: Exception | None = None
         try:
             async with session.tx():
                 await session.save(blog_post)
                 raise Exception("rollback")
         except Exception as e:
-            assert str(e) == "rollback"
+            rollback_err = e
+
+        assert str(rollback_err) == "rollback"
 
         got = await session.get(BlogPost, 1)
         assert got is None
@@ -126,12 +129,15 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
             title="First post",
             content="Content A",
         )
+        rollback_err: Exception | None = None
         try:
             async with session.tx():
                 await session.save(blog_post)
                 raise Exception("rollback")
         except Exception as e:
-            assert str(e) == "rollback"
+            rollback_err = e
+
+        assert str(rollback_err) == "rollback"
 
         await session.save(blog_post)
 
@@ -142,12 +148,15 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
             title="First post",
             content="Content A",
         )
+        rollback_err: Exception | None = None
         try:
             async with session.tx():
                 await session.save(blog_post)
                 raise Exception("rollback")
         except Exception as e:
-            assert str(e) == "rollback"
+            rollback_err = e
+
+        assert str(rollback_err) == "rollback"
 
         deleted = await session.delete(blog_post)
         assert not deleted
@@ -190,12 +199,15 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
         )
         await session.save(blog_post)
 
+        rollback_err: Exception | None = None
         try:
             async with session.tx():
                 assert await session.delete(blog_post)
                 raise Exception("rollback")
         except Exception as e:
-            assert str(e) == "rollback"
+            rollback_err = e
+
+        assert str(rollback_err) == "rollback"
 
         got = await session.get(BlogPost, 1)
         assert got is not None
@@ -210,11 +222,54 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
         )
         await session.save(blog_post)
 
+        rollback_err: Exception | None = None
         try:
             async with session.tx():
-                assert await session.delete(blog_post)
+                await session.delete(blog_post)
                 raise Exception("rollback")
         except Exception as e:
-            assert str(e) == "rollback"
+            rollback_err = e
+
+        assert str(rollback_err) == "rollback"
 
         await session.save(blog_post)
+
+    async def test_nested(self) -> None:
+        session = self.session()
+
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        async with session.tx():
+            async with session.tx():
+                async with session.tx():
+                    await session.save(blog_post)
+
+        got = await session.get(BlogPost, 1)
+        assert got is not None
+        assert got is blog_post
+
+    async def test_nested_innermost_rollback(self) -> None:
+        session = self.session()
+
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        rollback_err: Exception | None = None
+        try:
+            async with session.tx():
+                async with session.tx():
+                    async with session.tx():
+                        await session.save(blog_post)
+                        raise Exception("rollback")
+        except Exception as e:
+            rollback_err = e
+
+        assert str(rollback_err) == "rollback"
+
+        got = await session.get(BlogPost, 1)
+        assert got is None

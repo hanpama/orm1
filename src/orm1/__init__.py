@@ -192,6 +192,7 @@ class Session:
         self._backend = backend
         self._mappings = {mapping.entity_type: mapping for mapping in mappings}
         self._idm = {}
+        self._in_tx = False
 
     async def get(self, entity_type: Type[TEntity], id: typing.Any):
         return (await self.batch_get(entity_type, (id,)))[0]
@@ -222,15 +223,21 @@ class Session:
 
     @asynccontextmanager
     async def tx(self):
-        prev_idm = {k: dict(v) for k, v in self._idm.items()}
-        await self._backend.begin()
-        try:
+        if self._in_tx:
             yield
-            await self._backend.commit()
-        except Exception as e:
-            await self._backend.rollback()
-            self._idm = prev_idm
-            raise e
+        else:
+            self._in_tx = True
+            prev_idm = {k: dict(v) for k, v in self._idm.items()}
+            await self._backend.begin()
+            try:
+                yield
+                await self._backend.commit()
+            except Exception as e:
+                await self._backend.rollback()
+                self._idm = prev_idm
+                raise e
+            finally:
+                self._in_tx = False
 
     async def _get(self, mapping: EntityMapping, where: list[str], values: list[Rec]):
         select_stmt = SQLSelect(
