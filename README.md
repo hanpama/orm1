@@ -22,7 +22,7 @@ orm1 is a minimal asynchronous Object-Relational Mapping (ORM) library for Pytho
   When you need full control, execute raw SQL queries with safe parameter binding.
 
 - **Flexible Transaction Management**  
-  Manage database transactions with simple `begin()`, `commit()`, and `rollback()` methods.
+  Start and commit transactions with ease, using the session’s transaction context manager `tx`.
 
 ---
 
@@ -234,18 +234,19 @@ results = await raw_query.fetch()
 - **`raw(query, **params)`**  
   Create a raw SQL query.
 
-- **Transaction Management**:  
-  - **`begin()`**: Start a transaction.  
-  - **`commit()`**: Commit the current transaction.  
-  - **`rollback()`**: Roll back the current transaction.
+- **`tx()`**  
+  Start a new transaction.
 
 ### SessionEntityQuery
 
-- **`filter(condition, **params)`**  
-  Add a filtering condition to the query.
+- **`where(condition, **params)`**  
+  Add a where condition to the query.
 
 - **`join(target, alias, on, **params)`** / **`left_join(target, alias, on, **params)`**  
   Join another table (or entity) into the query.
+
+- **`having(condition, **params)`**  
+  Add a having condition to the query.
 
 - **`order_by(...)`**  
   Specify ordering for the query results.
