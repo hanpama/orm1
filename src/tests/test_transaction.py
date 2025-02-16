@@ -273,3 +273,29 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
 
         got = await session.get(BlogPost, 1)
         assert got is None
+
+    async def test_nested_inner_rollback_catched(self) -> None:
+        session = self.session()
+
+        blog_post = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        transaction_err: Exception | None = None
+
+        try:
+            async with session.tx():
+                try:
+                    async with session.tx():
+                        await session.save(blog_post)
+                        raise Exception("rollback")
+                except Exception:
+                    pass
+        except Exception as e:
+            transaction_err = e
+
+        assert str(transaction_err) == "Transaction already failed"
+
+        got = await session.get(BlogPost, 1)
+        assert got is None

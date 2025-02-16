@@ -193,6 +193,7 @@ class Session:
         self._mappings = {mapping.entity_type: mapping for mapping in mappings}
         self._idm = {}
         self._in_tx = False
+        self._tx_failed = False
 
     async def get(self, entity_type: Type[TEntity], id: typing.Any):
         return (await self.batch_get(entity_type, (id,)))[0]
@@ -224,18 +225,24 @@ class Session:
     @asynccontextmanager
     async def tx(self):
         if self._in_tx:
-            yield
+            try:
+                yield
+            except:
+                self._tx_failed = True
+                raise
         else:
             self._in_tx = True
+            self._tx_failed = False
             prev_idm = {k: dict(v) for k, v in self._idm.items()}
             await self._backend.begin()
             try:
                 yield
+                assert not self._tx_failed, "Transaction already failed"
                 await self._backend.commit()
-            except Exception as e:
+            except:
                 await self._backend.rollback()
                 self._idm = prev_idm
-                raise e
+                raise
             finally:
                 self._in_tx = False
 
