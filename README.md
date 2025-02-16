@@ -10,7 +10,7 @@ orm1 is a minimal asynchronous Object-Relational Mapping (ORM) library for Pytho
   Leverage Python’s `async`/`await` syntax with an asyncpg backend for high-performance, non-blocking database operations.
 
 - **Auto-mapping with Type Hints**  
-  Automatically generate entity mappings from your class type hints. orm1 can infer column names and even detect relationships (both singular and plural) based on your annotations.
+  Automatically generate entity mappings from your class type hints. orm1 infers column names (using snake_case conversion) and even detects relationships (both singular and plural) based on your annotations—greatly reducing boilerplate.
 
 - **Aggregate Support (Parent-Child Relationship)**  
   Define aggregates naturally by specifying child entities that are part of an aggregate. For instance, a `Post` aggregate can include multiple `PostAttachment` instances.
@@ -18,11 +18,14 @@ orm1 is a minimal asynchronous Object-Relational Mapping (ORM) library for Pytho
 - **Fluent Query Builder**  
   Construct complex SQL queries using a Pythonic API. orm1 supports filtering, joins, ordering, and pagination, all while keeping your code readable.
 
-- **Raw SQL Queries**  
-  When you need full control, execute raw SQL queries with safe parameter binding.
+- **Raw SQL Queries with Safe Parameter Binding**  
+  Execute raw SQL queries while benefitting from an internal SQL Abstract Syntax Tree (AST) that safely binds parameters, protecting against SQL injection.
 
 - **Flexible Transaction Management**  
   Start and commit transactions with ease, using the session’s transaction context manager `tx`.
+
+- **Composite Key Support**  
+  orm1 supports both single and composite keys for primary and parental keys. When multiple fields are specified, orm1 automatically combines them into a tuple key for consistent entity identification.
 
 ---
 
@@ -87,6 +90,23 @@ CREATE TABLE post_attachments (
 );
 ```
 
+### Composite Key Example
+
+orm1 also supports composite keys. Simply provide a list of field names for `primary_key` (or `parental_key`) in your mapping configuration:
+
+```python
+@auto.mapped(
+    table="user_roles",
+    primary_key=["user_id", "role_id"]
+)
+class UserRole:
+    user_id: int
+    role_id: int
+    # additional fields...
+```
+
+In this case, orm1 will automatically combine `user_id` and `role_id` into a tuple key for entity identification.
+
 ### Building Mappings
 
 After decorating your entity classes, build the mappings. This process collects the configuration and type hints to create the internal mapping definitions used by orm1.
@@ -147,7 +167,7 @@ Use the query builder to fetch entities with filtering, joins, and ordering.
 ```python
 # Query for a post by title.
 query = session.query(Post, alias="p")
-query = query.filter('p."title" = :title', title="Introducing orm1")
+query = query.where('p."title" = :title', title="Introducing orm1")
 posts = await query.fetch()
 
 # Get a single post.
@@ -174,6 +194,19 @@ await session.delete(post)
 
 ---
 
+## Transactions
+
+Use the session’s transaction context manager `tx` to start and commit transactions.
+
+```python
+async with session.tx():
+    post = await session.get(Post, 1)
+    post.title = "Transaction Test"
+    await session.save(post)
+```
+
+---
+
 ## Advanced Querying
 
 ### Joining Related Entities
@@ -184,7 +217,7 @@ Join related tables by using the `join` or `left_join` methods on a query. This 
 # Join post attachments with their parent posts.
 query = session.query(PostAttachment, "a")
 query = query.join(Post, "p", 'a.post_id = p.id')
-query = query.filter('p.title = :title', title="Introducing orm1")
+query = query.where('p.title = :title', title="Introducing orm1")
 attachments = await query.fetch()
 ```
 
@@ -200,18 +233,30 @@ attachments = await query.fetch(limit=10, offset=0)
 
 # Pagination: use paginate to get page information.
 page = await query.paginate(first=10)
-print("Attachment IDs on current page:", page.ids)
+print("Attachment cursors on current page:", page.cursors)
 print("Has next page?", page.has_next_page)
 ```
 
 ### Executing Raw SQL Queries
 
-If you need more control, execute raw SQL statements while still benefiting from parameter binding.
+If you need more control, execute raw SQL statements while still benefiting from safe parameter binding.
 
 ```python
 raw_query = session.raw("SELECT * FROM post_attachments WHERE file_name LIKE :pattern", pattern="%diagram%")
 results = await raw_query.fetch()
 ```
+
+---
+
+## Auto-mapping and Relationship Detection
+
+orm1’s auto-mapping leverages Python’s type hints to automatically generate entity mappings:
+- **Field Mapping**: Fields without explicit configuration are automatically mapped to columns using a snake_case conversion.
+- **Relationship Detection**: 
+  - If an attribute is annotated as a list of another mapped entity, orm1 interprets it as a one-to-many relationship.
+  - If an attribute is annotated as an optional entity (e.g., `Optional[Entity]`), it’s treated as a singular relationship.
+  
+This auto-detection reduces manual configuration and simplifies managing aggregate entities and their children.
 
 ---
 
@@ -266,7 +311,7 @@ results = await raw_query.fetch()
 ### AutoMappingBuilder
 
 - **`@auto.mapped(**kwargs)`**  
-  Decorator to register and configure an entity’s mapping. Configuration options include specifying the table name, primary key, parental key, field configurations, and child (relationship) configurations.
+  Decorator to register and configure an entity’s mapping. Configuration options include specifying the table name, primary key (single or composite), parental key, field configurations, and child (relationship) configurations.
 
 - **`auto.build()`**  
   Build and return all entity mappings based on the registered configurations.
