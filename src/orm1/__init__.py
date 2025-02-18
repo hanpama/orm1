@@ -861,7 +861,7 @@ class AutoMappingBuilder:
         self._configs = dict[type, self.EntityMappingConfig]()
         self._mappings = dict[type, EntityMapping]()
 
-    def map(self, entity_type: type, **kwargs: typing.Unpack[EntityMappingConfig]):
+    def map(self, entity_type: type[TEntity], **kwargs: typing.Unpack[EntityMappingConfig]):
         self._configs[entity_type] = kwargs
         return entity_type
 
