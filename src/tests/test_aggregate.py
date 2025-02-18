@@ -257,6 +257,7 @@ class AggregateTestCase(AutoRollbackTestCase):
         session = self.session()
         entity = await session.get(Purchase, 1)
         assert entity
+        assert entity.billings[0].payment
 
         entity.billings[0].payment.amount = Decimal("200.00")
 
@@ -296,6 +297,7 @@ class AggregateTestCase(AutoRollbackTestCase):
         session = self.session()
         entity = await session.get(Purchase, 2)
         assert entity
+        assert entity.withdrawal
 
         entity.withdrawal.remark = "New remark"
 
