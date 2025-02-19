@@ -106,14 +106,14 @@ sql_n = typing.NamedTuple("sql_n", [("part", str)])
 sql_qn = typing.NamedTuple("sql_qn", [("part1", str), ("part2", str)])
 sql_text = typing.NamedTuple("sql_text", [("text", str)])
 sql_param = typing.NamedTuple("sql_param", [("id", typing.Hashable)])
-sql_all = typing.NamedTuple("sql_all", [("els", typing.Iterable["SQL"])])
-sql_any = typing.NamedTuple("sql_any", [("els", typing.Iterable["SQL"])])
+sql_all = typing.NamedTuple("sql_all", [("els", list["SQL"])])
+sql_any = typing.NamedTuple("sql_any", [("els", list["SQL"])])
 sql_eq = typing.NamedTuple("sql_eq", [("left", "SQL"), ("right", "SQL")])
 sql_lt = typing.NamedTuple("sql_lt", [("left", "SQL"), ("right", "SQL")])
 sql_gt = typing.NamedTuple("sql_gt", [("left", "SQL"), ("right", "SQL")])
 sql_is_null = typing.NamedTuple("sql_is_null", [("operand", "SQL")])
 sql_is_not_null = typing.NamedTuple("sql_is_not_null", [("operand", "SQL")])
-sql_fragment = typing.NamedTuple("sql_fragment", [("els", typing.Iterable["SQL"])])
+sql_fragment = typing.NamedTuple("sql_fragment", [("els", list["SQL"])])
 
 SQL = (
     sql_n
@@ -251,7 +251,7 @@ class Session:
             select=[sql_qn("t", c) for c in mapping.selectable_cols],
             from_table=sql_qn(mapping.schema, mapping.table),
             from_alias=sql_n("t"),
-            where=sql_all(sql_eq(sql_qn("t", c), sql_param(i)) for i, c in enumerate(where)),
+            where=sql_all([sql_eq(sql_qn("t", c), sql_param(i)) for i, c in enumerate(where)]),
         )
         param_lists = (ParamMap((i, rec[c]) for i, c in enumerate(where)) for rec in values)
         recs = await self._backend.select(select_stmt, *param_lists)
@@ -291,7 +291,10 @@ class Session:
                 table=sql_qn(mapping.schema, mapping.table),
                 sets=[(sql_n(c), sql_param(i)) for i, c in enumerate(mapping.updatable_cols)],
                 where=sql_all(
-                    sql_eq(sql_n(c), sql_param(i + len(mapping.updatable_cols))) for i, c in enumerate(mapping.primary_cols)
+                    [
+                        sql_eq(sql_n(c), sql_param(i + len(mapping.updatable_cols)))
+                        for i, c in enumerate(mapping.primary_cols)
+                    ]
                 ),
                 returning=[sql_n(c) for c in mapping.selectable_cols],
             )
@@ -350,7 +353,7 @@ class Session:
         recs = [mapping.id_to_record(mapping.id_from_entity(e)) for e in entities]
         stmt = SQLDelete(
             from_table=sql_qn(mapping.schema, mapping.table),
-            where=sql_all(sql_eq(sql_n(c), sql_param(i)) for i, c in enumerate(mapping.primary_cols)),
+            where=sql_all([sql_eq(sql_n(c), sql_param(i)) for i, c in enumerate(mapping.primary_cols)]),
             returning=[sql_n(c) for c in mapping.primary_cols + mapping.parental_cols],
         )
         param_maps = (ParamMap((i, rec[c]) for i, c in enumerate(mapping.primary_cols)) for rec in recs)
@@ -500,12 +503,12 @@ class Session:
                 else:
                     comp = sql_gt(v, sort.expr)
                 if i != j:
-                    null = sql_all((sql_is_null(v), sql_is_null(sort.expr)))
+                    null = sql_all([sql_is_null(v), sql_is_null(sort.expr)])
                 elif sort.nulls_last == is_forward:
-                    null = sql_all((sql_is_not_null(v), sql_is_null(sort.expr)))
+                    null = sql_all([sql_is_not_null(v), sql_is_null(sort.expr)])
                 else:
-                    null = sql_all((sql_is_null(v), sql_is_not_null(sort.expr)))
-                and_predicates.append(sql_any((comp, null)))
+                    null = sql_all([sql_is_null(v), sql_is_not_null(sort.expr)])
+                and_predicates.append(sql_any([comp, null]))
             or_predicates.append(sql_all(and_predicates))
         return sql_any(or_predicates)
 
@@ -617,11 +620,11 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         return self
 
     def where(self, condition: str, **params):
-        self.where_conds.append(self._parse(condition, params))
+        self.where_conds.append(self._parse(f"({condition})", params))
         return self
 
     def having(self, condition: str, **params):
-        self.having_conds.append(self._parse(condition, params))
+        self.having_conds.append(self._parse(f"({condition})", params))
         return self
 
     def order_by(self, *order_by: SQLSelect.OrderBy):
@@ -825,15 +828,15 @@ class AsyncPGSessionBackend(SessionBackend):
                 case sql_any(els):
                     return f"({' OR '.join(self._el(e) for e in els)})"
                 case sql_eq(left, right):
-                    return f"{self._el(left)} = {self._el(right)}"
+                    return f"({self._el(left)} = {self._el(right)})"
                 case sql_lt(left, right):
-                    return f"{self._el(left)} < {self._el(right)}"
+                    return f"({self._el(left)} < {self._el(right)})"
                 case sql_gt(left, right):
-                    return f"{self._el(left)} > {self._el(right)}"
+                    return f"({self._el(left)} > {self._el(right)})"
                 case sql_is_null(expr):
-                    return f"{self._el(expr)} IS NULL"
+                    return f"({self._el(expr)} IS NULL)"
                 case sql_is_not_null(expr):
-                    return f"{self._el(expr)} IS NOT NULL"
+                    return f"({self._el(expr)} IS NOT NULL)"
                 case sql_fragment(elements):
                     return "".join(self._el(e) for e in elements)
 
@@ -938,7 +941,7 @@ class AutoMappingBuilder:
         return Field(
             column=column,
             insertable=is_parental or not skip_on_insert,
-            updatable=not (is_primary or is_parental and skip_on_update),
+            updatable=not (is_primary or is_parental or skip_on_update),
             getter=lambda entity, name=name: getattr(entity, name, None),
             setter=lambda entity, value, name=name: setattr(entity, name, value),
         )
