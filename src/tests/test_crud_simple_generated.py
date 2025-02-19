@@ -9,7 +9,8 @@ schema = """
             id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             name VARCHAR(100) NOT NULL,
-            "AGE" INTEGER NOT NULL
+            "AGE" INTEGER NOT NULL,
+            code INTEGER GENERATED ALWAYS AS IDENTITY
         );
     END $$;
 """
@@ -29,6 +30,10 @@ schema = """
         "age": {
             "column": "AGE",
         },
+        "code": {
+            "skip_on_insert": True,
+            "skip_on_update": True,
+        },
     },
 )
 class Person:
@@ -36,6 +41,7 @@ class Person:
     created_at: str
     name: str
     age: int
+    code: int
 
     def __init__(self, name: str, age: int):
         self.name = name
