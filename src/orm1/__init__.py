@@ -185,6 +185,9 @@ class SessionBackend(typing.Protocol):
     async def begin(self): ...
     async def commit(self): ...
     async def rollback(self): ...
+    async def savepoint(self, name: str): ...
+    async def release(self, name: str): ...
+    async def rollback_to(self, name: str): ...
 
 
 class Session:
@@ -192,8 +195,7 @@ class Session:
         self._backend = backend
         self._mappings = {mapping.entity_type: mapping for mapping in mappings}
         self._idm = {}
-        self._in_tx = False
-        self._tx_failed = False
+        self._tx_depth = 0
 
     async def get(self, entity_type: Type[TEntity], id: typing.Any):
         return (await self.batch_get(entity_type, (id,)))[0]
@@ -224,27 +226,36 @@ class Session:
 
     @asynccontextmanager
     async def tx(self):
-        if self._in_tx:
-            try:
-                yield
-            except:
-                self._tx_failed = True
-                raise
-        else:
-            self._in_tx = True
-            self._tx_failed = False
-            prev_idm = {k: dict(v) for k, v in self._idm.items()}
+        await self._start_tx()
+        prev_idm = {k: dict(v) for k, v in self._idm.items()}
+        try:
+            yield
+            await self._end_tx()
+        except Exception:
+            await self._rollback_tx()
+            self._idm = prev_idm
+            raise
+
+    async def _start_tx(self):
+        if self._tx_depth == 0:
             await self._backend.begin()
-            try:
-                yield
-                assert not self._tx_failed, "Transaction already failed"
-                await self._backend.commit()
-            except:
-                await self._backend.rollback()
-                self._idm = prev_idm
-                raise
-            finally:
-                self._in_tx = False
+        else:
+            await self._backend.savepoint(f"tx_{self._tx_depth}")
+        self._tx_depth += 1
+
+    async def _end_tx(self):
+        self._tx_depth -= 1
+        if self._tx_depth == 0:
+            await self._backend.commit()
+        else:
+            await self._backend.release(f"tx_{self._tx_depth}")
+
+    async def _rollback_tx(self):
+        self._tx_depth -= 1
+        if self._tx_depth == 0:
+            await self._backend.rollback()
+        else:
+            await self._backend.rollback_to(f"tx_{self._tx_depth}")
 
     async def _get(self, mapping: EntityMapping, where: list[str], values: list[Rec]):
         select_stmt = SQLSelect(
@@ -745,6 +756,15 @@ class AsyncPGSessionBackend(SessionBackend):
             await self._pool.release(self._active)
             self._active = self._pool
             self._tx = None
+
+    async def savepoint(self, name: str):
+        await self._active.execute(f"SAVEPOINT {name}")
+
+    async def release(self, name: str):
+        await self._active.execute(f"RELEASE SAVEPOINT {name}")
+
+    async def rollback_to(self, name: str):
+        await self._active.execute(f"ROLLBACK TO SAVEPOINT {name}")
 
     class Renderer:
         def __init__(self):

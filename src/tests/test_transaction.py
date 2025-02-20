@@ -277,25 +277,57 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
     async def test_nested_inner_rollback_catched(self) -> None:
         session = self.session()
 
-        blog_post = BlogPost(
+        blog_post_1 = BlogPost(
             id=1,
             title="First post",
             content="Content A",
         )
-        transaction_err: Exception | None = None
+        blog_post_2 = BlogPost(
+            id=2,
+            title="Second post",
+            content="Content B",
+        )
+
+        async with session.tx():
+            await session.save(blog_post_1)
+            try:
+                async with session.tx():
+                    await session.save(blog_post_2)
+                    raise Exception("rollback")
+            except Exception:
+                pass
+
+        got_1 = await session.get(BlogPost, 1)
+        assert got_1 is blog_post_1
+
+        got_2 = await session.get(BlogPost, 2)
+        assert got_2 is None
+
+    async def test_nested_outer_rollback(self) -> None:
+        session = self.session()
+
+        blog_post_1 = BlogPost(
+            id=1,
+            title="First post",
+            content="Content A",
+        )
+        blog_post_2 = BlogPost(
+            id=2,
+            title="Second post",
+            content="Content B",
+        )
 
         try:
             async with session.tx():
-                try:
-                    async with session.tx():
-                        await session.save(blog_post)
-                        raise Exception("rollback")
-                except Exception:
-                    pass
-        except Exception as e:
-            transaction_err = e
+                await session.save(blog_post_1)
+                async with session.tx():
+                    await session.save(blog_post_2)
+                raise Exception("rollback")
+        except Exception:
+            pass
 
-        assert str(transaction_err) == "Transaction already failed"
+        got_1 = await session.get(BlogPost, 1)
+        assert got_1 is None
 
-        got = await session.get(BlogPost, 1)
-        assert got is None
+        got_2 = await session.get(BlogPost, 2)
+        assert got_2 is None
