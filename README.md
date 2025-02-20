@@ -22,7 +22,7 @@ orm1 is a minimal asynchronous Object-Relational Mapping (ORM) library for Pytho
   Execute raw SQL queries while benefitting from an internal SQL Abstract Syntax Tree (AST) that safely binds parameters, protecting against SQL injection.
 
 - **Flexible Transaction Management**  
-  Start and commit transactions with ease, using the session’s transaction context manager `tx`.
+  Start and commit transactions with ease, using the session’s transaction context manager `tx`. Nested transactions are implemented using savepoints.
 
 - **Composite Key Support**  
   orm1 supports both single and composite keys for primary and parental keys. When multiple fields are specified, orm1 automatically combines them into a tuple key for consistent entity identification.
