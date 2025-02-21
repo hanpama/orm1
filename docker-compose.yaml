@@ -25,7 +25,7 @@ services:
       - ./src:/app
       - ./coverage:/coverage
     working_dir: /app
-    command: sh -c 'coverage run --source src/orm1 -m unittest discover -v && coverage xml -o /coverage/coverage.xml'
+    command: sh -c 'coverage run --source orm1 -m unittest discover -v && coverage xml -o /coverage/coverage.xml'
     depends_on:
       postgres:
         condition: service_healthy
