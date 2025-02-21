@@ -1,5 +1,7 @@
 # orm1
 
+[![codecov](https://codecov.io/gh/hanpama/orm1/branch/main/graph/badge.svg)](https://codecov.io/gh/hanpama/orm1)
+
 orm1 is a minimal asynchronous Object-Relational Mapping (ORM) library for Python that makes it easy to map your Python classes to PostgreSQL database tables. Built on top of [asyncpg](https://github.com/MagicStack/asyncpg), orm1 provides a minimal yet powerful API for CRUD operations, complex query building, and relationship management – all with full async support.
 
 ---
