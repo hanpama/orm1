@@ -11,5 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - run: docker compose up -d postgres
-    - run: docker compose run test
+    - name: Start Postgres service
+      run: docker compose up -d postgres
+    - name: Run tests and generate coverage report
+      run: docker compose run test
+    - name: Upload coverage report to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage/coverage.xml
+        token: ${{ secrets.CODECOV_TOKEN }}

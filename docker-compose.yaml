@@ -23,8 +23,9 @@ services:
       - DATABASE_URI=postgres://postgres:8800bc84f23af727f4e9@postgres:5432/postgres
     volumes:
       - ./src:/app
+      - ./coverage:/coverage
     working_dir: /app
-    command: python3 -m unittest discover -v
+    command: coverage run -m unittest discover -v && coverage xml -o /coverage/coverage.xml
     depends_on:
       postgres:
         condition: service_healthy
