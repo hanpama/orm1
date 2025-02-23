@@ -52,10 +52,7 @@ Below is an example using a `Post` aggregate with its child `PostAttachment`:
 ```python
 from orm1 import auto
 
-@auto.mapped(
-    table="posts",
-    primary_key="id"
-)
+@auto.mapped()
 class Post:
     id: int
     title: str
@@ -64,9 +61,7 @@ class Post:
     attachments: list["PostAttachment"]
 
 @auto.mapped(
-    table="post_attachments",
-    primary_key="id",
-    parental_key="post_id"  # Indicates this entity belongs to a Post aggregate.
+    parental_key="post_id",  # Indicates this entity belongs to a Post aggregate.
 )
 class PostAttachment:
     id: int
@@ -75,16 +70,16 @@ class PostAttachment:
     url: str
 ```
 
-The mappings above assume that you have a PostgreSQL database with tables `posts` and `post_attachments`. The `PostAttachment` table has a foreign key `post_id` that references the `id` column of the `posts` table.
+The mappings above assume that you have a PostgreSQL database with tables `post` and `post_attachment`. The `post_attachment` table has a foreign key `post_id` that references the `id` column of the `post` table.
 
 ```sql
-CREATE TABLE posts (
+CREATE TABLE post (
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
     content TEXT NOT NULL
 );
 
-CREATE TABLE post_attachments (
+CREATE TABLE post_attachment (
     id SERIAL PRIMARY KEY,
     post_id INT NOT NULL REFERENCES posts(id),
     file_name TEXT NOT NULL,
@@ -107,7 +102,15 @@ class UserRole:
     # additional fields...
 ```
 
-In this case, orm1 will automatically combine `user_id` and `role_id` into a tuple key for entity identification.
+In this case, orm1 will combine `user_id` and `role_id` into a tuple key for entity identification.
+
+```sql
+CREATE TABLE user_roles (
+    user_id INT NOT NULL,
+    role_id INT NOT NULL,
+    PRIMARY KEY (user_id, role_id)
+);
+```
 
 ### Building Mappings
 
@@ -183,8 +186,15 @@ Modify the attributes of an entity and call `save` again. orm1 will automaticall
 ```python
 # Update the post's title.
 post.title = "Introducing orm1 - A Lightweight Async ORM"
+post.attachments[0].file_name = "diagram_v2.png"
+post.attachments.append(
+    PostAttachment(file_name="code.py", url="http://example.com/code.py")
+)
+
 await session.save(post)
 ```
+
+Any changes to the entity’s children (e.g., `attachments`) will be cascaded and saved as part of the aggregate.
 
 ### Deleting Entities
 
