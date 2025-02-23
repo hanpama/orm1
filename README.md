@@ -81,7 +81,7 @@ CREATE TABLE post (
 
 CREATE TABLE post_attachment (
     id SERIAL PRIMARY KEY,
-    post_id INT NOT NULL REFERENCES posts(id),
+    post_id INT NOT NULL REFERENCES post(id),
     file_name TEXT NOT NULL,
     url TEXT NOT NULL
 );
