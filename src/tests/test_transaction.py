@@ -171,7 +171,7 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
         await session.save(blog_post)
 
         async with session.tx():
-            assert await session.delete(blog_post)
+            await session.delete(blog_post)
 
         got = await session.get(BlogPost, 1)
         assert got is None
@@ -202,7 +202,7 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
         rollback_err: Exception | None = None
         try:
             async with session.tx():
-                assert await session.delete(blog_post)
+                await session.delete(blog_post)
                 raise Exception("rollback")
         except Exception as e:
             rollback_err = e

@@ -8,98 +8,129 @@ import asyncpg
 import asyncpg.transaction
 
 Entity = object
-Key = typing.Hashable | tuple[typing.Hashable, ...]
-PostgresCodable = typing.Any
-Rec = dict[str, PostgresCodable]
-EntityFactory = typing.Callable[[], Entity]
-ParamMap = dict[typing.Hashable, PostgresCodable]
+KeyLike = typing.Union[typing.Hashable, typing.Sequence[typing.Hashable]]
+Value = typing.Any
+Row = tuple[Value, ...]
+ParamMap = dict[typing.Hashable, Value]
 TEntity = typing.TypeVar("TEntity", bound=Entity)
+
+
+class Key(tuple[typing.Hashable]):
+    @classmethod
+    def from_key_like(cls, key_like: KeyLike) -> "Key":
+        return cls(key_like) if isinstance(key_like, Sequence) else cls((key_like,))
+
+
+class PropertyAccessor(typing.Protocol):
+    def get(self, entity: Entity) -> Value: ...
+    def set(self, entity: Entity, value: Value): ...
+
+
+class EntityFactory(typing.Protocol):
+    def create(self) -> Entity: ...
 
 
 class Field(typing.NamedTuple):
     column: str
-    setter: typing.Callable[[Entity, PostgresCodable], None]
-    getter: typing.Callable[[Entity], PostgresCodable]
-    insertable: bool
-    updatable: bool
+    accessor: PropertyAccessor
 
 
 class Child(typing.NamedTuple):
     target: type[Entity]
-    getter: typing.Callable[[Entity], Sequence[Entity]]
-    setter: typing.Callable[[Entity, Sequence[Entity]], None]
+    accessor: PropertyAccessor
+
+
+class EntityIdentity(typing.NamedTuple):
+    type: Type[Entity]
+    parental_key: Key
+    primary_key: Key
+
+
+class EntityIdentityMap:
+    def __init__(self, data: dict[tuple[type, Key], dict[EntityIdentity, object]] | None = None):
+        self._idm = data or {}
+
+    def track(self, identity: EntityIdentity, entity: Entity):
+        scope = self._idm.setdefault((identity.type, identity.parental_key), {})
+        scope[identity] = entity
+
+    def untrack(self, identity: EntityIdentity):
+        self._idm.get((identity.type, identity.parental_key), {}).pop(identity)
+
+    def in_track(self, identity: EntityIdentity):
+        scope = self._idm.setdefault((identity.type, identity.parental_key), {})
+        return identity in scope
+
+    def get_tracked(self, identity: EntityIdentity):
+        scope = self._idm.setdefault((identity.type, identity.parental_key), {})
+        return scope.get(identity)
+
+    def get_tracked_children(self, type: Type[Entity], parental_key: Key):
+        return self._idm.get((type, parental_key), {}).keys()
+
+    def copy(self):
+        return EntityIdentityMap({k: dict(v) for k, v in self._idm.items()})
 
 
 class EntityMapping(typing.NamedTuple):
     entity_type: Type[Entity]
     entity_factory: EntityFactory
-    table: str
     schema: str
+    table: str
     fields: dict[str, Field]
     children: dict[str, Child]
-    primary_key_fields: list[str]
-    parental_key_fields: list[str]
+    primary_key: list[str]
+    parental_key: list[str]
+    insertable: list[str]
+    updatable: list[str]
+    key: list[str]
+    full: list[str]
 
-    @property
-    def selectable_cols(self):
-        return [f.column for f in self.fields.values()]
+    def get_key_fields(self):
+        return [self.fields[fn] for fn in self.key]
 
-    @property
-    def insertable_cols(self):
-        return [f.column for f in self.fields.values() if f.insertable]
+    def get_full_fields(self):
+        return [self.fields[fn] for fn in self.full]
 
-    @property
-    def updatable_cols(self):
-        return [f.column for f in self.fields.values() if f.updatable]
+    def get_insertable_fields(self):
+        return [self.fields[fn] for fn in self.insertable]
 
-    @property
-    def primary_cols(self):
-        return [self.fields[name].column for name in self.primary_key_fields]
+    def get_updatable_fields(self):
+        return [self.fields[fn] for fn in self.updatable]
 
-    @property
-    def parental_cols(self):
-        return [self.fields[name].column for name in self.parental_key_fields]
+    def get_primary_fields(self):
+        return [self.fields[fn] for fn in self.primary_key]
 
-    def id_from_entity(self, entity: Entity) -> Key:
-        return self._key_from_entity(entity, self.primary_key_fields)
+    def get_parental_fields(self):
+        return [self.fields[fn] for fn in self.parental_key]
 
-    def id_from_record(self, rec: Rec) -> Key:
-        return self._key_from_record(rec, self.primary_key_fields)
+    def primary_key_from_record(self, rec: Row) -> Key:
+        return Key(rec[i] for i, _ in enumerate(self.get_primary_fields()))
 
-    def id_to_record(self, id: Key) -> Rec:
-        return self._key_to_record(id, self.primary_key_fields)
+    def primary_key_from_entity(self, entity: Entity) -> Key:
+        return Key(f.accessor.get(entity) for f in self.get_primary_fields())
 
     def parental_key_from_entity(self, entity: Entity) -> Key:
-        return self._key_from_entity(entity, self.parental_key_fields)
+        return Key(f.accessor.get(entity) for f in self.get_parental_fields())
 
-    def parental_key_from_record(self, rec: Rec) -> Key:
-        return self._key_from_record(rec, self.parental_key_fields)
+    def key_from_entity(self, entity: Entity) -> EntityIdentity:
+        return EntityIdentity(
+            type=self.entity_type,
+            parental_key=self.parental_key_from_entity(entity),
+            primary_key=self.primary_key_from_entity(entity),
+        )
 
-    def parental_key_to_record(self, val: Key) -> Rec:
-        return self._key_to_record(val, self.parental_key_fields)
+    def key_from_record(self, rec: Row) -> EntityIdentity:
+        kvs = {f: v for f, v in zip(self.key, rec)}
+        return EntityIdentity(
+            type=self.entity_type,
+            parental_key=Key(kvs[f] for f in self.parental_key),
+            primary_key=Key(kvs[f] for f in self.primary_key),
+        )
 
-    def format_to_record(self, entity: Entity) -> Rec:
-        return {f.column: f.getter(entity) for f in self.fields.values()}
-
-    def write_to_entity(self, entity: Entity, rec: Rec):
-        for field in self.fields.values():
-            field.setter(entity, rec[field.column])
-
-    def _key_from_entity(self, entity: Entity, field_names: Sequence[str]) -> Key:
-        if len(field_names) == 1:
-            return self.fields[field_names[0]].getter(entity)
-        return tuple(self.fields[f].getter(entity) for f in field_names)
-
-    def _key_from_record(self, rec: Rec, field_names: Sequence[str]) -> Key:
-        if len(field_names) == 1:
-            return rec[self.fields[field_names[0]].column]
-        return tuple(rec[self.fields[f].column] for f in field_names)
-
-    def _key_to_record(self, key: Key, field_names: Sequence[str]) -> Rec:
-        if len(field_names) == 1:
-            return {self.fields[field_names[0]].column: key}
-        assert isinstance(key, tuple), f"Composite key must be a tuple but got {key}"
-        return {self.fields[f].column: v for f, v in zip(field_names, key)}
+    def write_to_entity(self, entity: Entity, fields: list[Field], row: Row):
+        for i, field in enumerate(fields):
+            field.accessor.set(entity, row[i])
 
 
 sql_n = typing.NamedTuple("sql_n", [("part", str)])
@@ -176,12 +207,12 @@ class SQLDelete(typing.NamedTuple):
 
 
 class SessionBackend(typing.Protocol):
-    async def select(self, stmt: SQLSelect, *param_maps: ParamMap) -> list[Rec]: ...
-    async def insert(self, stmt: SQLInsert, *param_maps: ParamMap) -> list[Rec]: ...
-    async def update(self, stmt: SQLUpdate, *param_maps: ParamMap) -> list[Rec]: ...
-    async def delete(self, stmt: SQLDelete, *param_maps: ParamMap) -> list[Rec]: ...
+    async def select(self, stmt: SQLSelect, *param_maps: ParamMap) -> list[Row]: ...
+    async def insert(self, stmt: SQLInsert, *param_maps: ParamMap) -> list[Row]: ...
+    async def update(self, stmt: SQLUpdate, *param_maps: ParamMap) -> list[Row]: ...
+    async def delete(self, stmt: SQLDelete, *param_maps: ParamMap) -> list[Row]: ...
     async def count(self, stmt: SQLSelect, param_map: ParamMap) -> int: ...
-    async def fetch_raw(self, raw: SQL, param_map: ParamMap) -> list[Rec]: ...
+    async def fetch_raw(self, raw: SQL, param_map: ParamMap) -> list[Row]: ...
     async def begin(self): ...
     async def commit(self): ...
     async def rollback(self): ...
@@ -194,29 +225,35 @@ class Session:
     def __init__(self, backend: SessionBackend, mappings: Collection[EntityMapping]):
         self._backend = backend
         self._mappings = {mapping.entity_type: mapping for mapping in mappings}
-        self._idm = {}
+        self._idm = EntityIdentityMap()
         self._tx_depth = 0
 
-    async def get(self, entity_type: Type[TEntity], id: typing.Any):
+    async def get(self, entity_type: Type[TEntity], id: KeyLike):
         return (await self.batch_get(entity_type, (id,)))[0]
 
     async def save(self, entity: Entity):
         await self.batch_save(type(entity), entity)
 
     async def delete(self, entity: Entity):
-        return (await self.batch_delete(type(entity), entity))[0]
+        await self.batch_delete(type(entity), entity)
 
-    async def batch_get(self, entity_type: Type[TEntity], ids: typing.Iterable[typing.Any]):
+    async def batch_get(self, entity_type: Type[TEntity], ids: typing.Iterable[KeyLike]):
         mapping = self.get_mapping(entity_type)
-        entity_map = await self._get(mapping, mapping.primary_cols, [mapping.id_to_record(id) for id in ids])
-        return typing.cast(list[TEntity | None], [entity_map.get(id) for id in ids])
+        primary_keys = [Key.from_key_like(id) for id in ids]
+        entity_map = await self._get(
+            mapping=mapping,
+            where=[f.column for f in mapping.get_primary_fields()],
+            keys=primary_keys,
+        )
+        return typing.cast(list[TEntity | None], [entity_map.get(pk) for pk in primary_keys])
 
     async def batch_save(self, entity_type: Type[TEntity], *entities: TEntity):
         mapping = self.get_mapping(entity_type)
-        await self._save(mapping, ((mapping.parental_key_from_entity(e), e) for e in entities))
+        await self._save(mapping, list(entities))
 
     async def batch_delete(self, entity_type: Type[TEntity], *entities: TEntity):
-        return await self._delete(self.get_mapping(entity_type), entities)
+        mapping = self.get_mapping(entity_type)
+        await self._delete(mapping, entities)
 
     def query(self, entity_type: Type[TEntity], alias: str):
         return SessionEntityQuery[TEntity](self, self.get_mapping(entity_type), alias)
@@ -227,7 +264,7 @@ class Session:
     @asynccontextmanager
     async def tx(self):
         await self._start_tx()
-        prev_idm = {k: dict(v) for k, v in self._idm.items()}
+        prev_idm = self._idm.copy()
         try:
             yield
             await self._end_tx()
@@ -257,93 +294,91 @@ class Session:
         else:
             await self._backend.rollback_to(f"tx_{self._tx_depth}")
 
-    async def _get(self, mapping: EntityMapping, where: list[str], values: list[Rec]):
+    async def _get(self, mapping: EntityMapping, where: list[str], keys: list[Key]):
         select_stmt = SQLSelect(
-            select=[sql_qn("t", c) for c in mapping.selectable_cols],
+            select=[sql_qn("t", f.column) for f in mapping.get_full_fields()],
             from_table=sql_qn(mapping.schema, mapping.table),
             from_alias=sql_n("t"),
-            where=sql_all([sql_eq(sql_qn("t", c), sql_param(i)) for i, c in enumerate(where)]),
+            where=sql_all([sql_eq(sql_qn("t", c), sql_param(c)) for c in where]),
         )
-        param_lists = (ParamMap((i, rec[c]) for i, c in enumerate(where)) for rec in values)
-        recs = await self._backend.select(select_stmt, *param_lists)
+        param_lists = [ParamMap((k, v) for k, v in zip(where, key)) for key in keys]
+        rows = await self._backend.select(select_stmt, *param_lists)
         ent_map: dict[Key, Entity] = {}
-        for rec in recs:
-            id = mapping.id_from_record(rec)
-            parental_key = mapping.parental_key_from_record(rec)
-            entity = self._get_tracked(mapping, parental_key, id) or mapping.entity_factory()
-            mapping.write_to_entity(entity, rec)
-            self._track(entity)
-            ent_map[id] = entity
+        for row in rows:
+            eid = mapping.key_from_record(row)
+            entity = self._idm.get_tracked(eid) or mapping.entity_factory.create()
+            mapping.write_to_entity(entity, mapping.get_full_fields(), row)
+            self._idm.track(eid, entity)
+            ent_map[eid.primary_key] = entity
 
         for child in mapping.children.values():
             child_mapping = self.get_mapping(child.target)
-            parental_keys = [child_mapping.parental_key_to_record(k) for k in ent_map]
-            child_ent_map = await self._get(child_mapping, child_mapping.parental_cols, parental_keys)
+            child_ent_map = await self._get(
+                mapping=child_mapping,
+                where=[f.column for f in child_mapping.get_parental_fields()],
+                keys=list(ent_map.keys()),
+            )
 
             child_groups = dict[Key, list[Entity]]()
             for child_entity in child_ent_map.values():
-                key = child_mapping.parental_key_from_entity(child_entity)
-                child_groups.setdefault(key, []).append(child_entity)
+                parental_key = child_mapping.parental_key_from_entity(child_entity)
+                child_groups.setdefault(parental_key, []).append(child_entity)
 
             for id, entity in ent_map.items():
-                child.setter(entity, child_groups.get(id, ()))
+                child.accessor.set(entity, child_groups.get(id, ()))
 
         return ent_map
 
-    async def _save(self, mapping: EntityMapping, entities: typing.Iterable[tuple[Key, Entity]]):
-        values = list[tuple[Entity, Rec]]()
-        for key, entity in entities:
-            rec = mapping.format_to_record(entity)
-            rec.update(mapping.parental_key_to_record(key))
-            values.append((entity, rec))
-
-        if to_update := [(e, r) for e, r in values if self._in_track(e)]:
+    async def _save(self, mapping: EntityMapping, entities: list[Entity]):
+        if to_update := [e for e in entities if self._idm.in_track(mapping.key_from_entity(e))]:
             update_stmt = SQLUpdate(
                 table=sql_qn(mapping.schema, mapping.table),
-                sets=[(sql_n(c), sql_param(i)) for i, c in enumerate(mapping.updatable_cols)],
-                where=sql_all(
-                    [
-                        sql_eq(sql_n(c), sql_param(i + len(mapping.updatable_cols)))
-                        for i, c in enumerate(mapping.primary_cols)
-                    ]
-                ),
-                returning=[sql_n(c) for c in mapping.selectable_cols],
+                sets=[(sql_n(f.column), sql_param(f.column)) for f in mapping.get_updatable_fields()],
+                where=sql_all([sql_eq(sql_n(f.column), sql_param(f.column)) for f in mapping.get_primary_fields()]),
+                returning=[sql_n(f.column) for f in mapping.get_full_fields()],
             )
-            columns = [*mapping.updatable_cols, *mapping.primary_cols]
-            param_lists = (ParamMap((i, rec[c]) for i, c in enumerate(columns)) for _, rec in to_update)
-            updated_recs = await self._backend.update(update_stmt, *param_lists)
-            for i in range(len(to_update)):
-                mapping.write_to_entity(to_update[i][0], updated_recs[i])
+            param_fields = [*mapping.get_updatable_fields(), *mapping.get_primary_fields()]
+            param_lists = [ParamMap((f.column, f.accessor.get(e)) for f in param_fields) for e in to_update]
+            rows = await self._backend.update(update_stmt, *param_lists)
 
-        if to_insert := [(e, r) for e, r in values if not self._in_track(e)]:
+            for e, r in zip(to_update, rows):
+                mapping.write_to_entity(e, mapping.get_full_fields(), r)
+
+        if to_insert := [e for e in entities if not self._idm.in_track(mapping.key_from_entity(e))]:
             insert_stmt = SQLInsert(
                 into_table=sql_qn(mapping.schema, mapping.table),
-                insert=[sql_n(c) for c in mapping.insertable_cols],
-                values=[sql_param(i) for i in range(len(mapping.insertable_cols))],
-                returning=[sql_n(c) for c in mapping.selectable_cols],
+                insert=[sql_n(f.column) for f in mapping.get_insertable_fields()],
+                values=[sql_param(f.column) for f in mapping.get_insertable_fields()],
+                returning=[sql_n(f.column) for f in mapping.get_full_fields()],
             )
-            columns = mapping.insertable_cols
-            param_lists = (ParamMap((i, rec[c]) for i, c in enumerate(columns)) for _, rec in to_insert)
-            inserted_recs = await self._backend.insert(insert_stmt, *param_lists)
-            for i in range(len(to_insert)):
-                mapping.write_to_entity(to_insert[i][0], inserted_recs[i])
-                self._track(to_insert[i][0])
+            param_fields = mapping.get_insertable_fields()
+            param_lists = [ParamMap((f.column, f.accessor.get(e)) for f in param_fields) for e in to_insert]
+            rows = await self._backend.insert(insert_stmt, *param_lists)
+
+            for e, r in zip(to_insert, rows):
+                mapping.write_to_entity(e, mapping.get_full_fields(), r)
+                self._idm.track(mapping.key_from_entity(e), e)
 
         for child in mapping.children.values():
             child_mapping = self.get_mapping(child.target)
             to_delete = list[Entity]()
-            to_save = list[tuple[Key, Entity]]()
-            for entity, _ in to_update:
-                id = mapping.id_from_entity(entity)
-                child_entities = child.getter(entity)
-                current_ids = {child_mapping.id_from_entity(e) for e in child_entities}
-                previous_ids = self._get_tracked_children(child_mapping, id)
-                to_delete.extend(previous_ids[id] for id in previous_ids if id not in current_ids)
+            to_save = list[Entity]()
+            for entity in to_update:
+                primary_key = mapping.primary_key_from_entity(entity)
+                child_entities = child.accessor.get(entity)
 
-            for entity, _ in values:
-                id = mapping.id_from_entity(entity)
-                child_entities = child.getter(entity)
-                to_save.extend((id, child_entity) for child_entity in child_entities)
+                current_eids = {child_mapping.key_from_entity(e) for e in child_entities}
+                previous_eids = self._idm.get_tracked_children(child_mapping.entity_type, primary_key)
+
+                for eid in previous_eids - current_eids:
+                    to_delete.append(self._idm.get_tracked(eid))
+
+            for entity in entities:
+                eid = mapping.key_from_entity(entity)
+                child_entities = child.accessor.get(entity)
+                for child_entity in child_entities:
+                    child_mapping.write_to_entity(child_entity, child_mapping.get_parental_fields(), eid.primary_key)
+                    to_save.append(child_entity)
 
             if to_delete:
                 await self._delete(child_mapping, to_delete)
@@ -351,33 +386,29 @@ class Session:
                 await self._save(child_mapping, to_save)
 
     async def _delete(self, mapping: EntityMapping, entities: Collection[Entity]):
-        ids = [mapping.id_from_entity(entity) for entity in entities]
         for child in mapping.children.values():
             child_mapping = self.get_mapping(child.target)
-            child_entities = [
-                self._get_tracked(child_mapping, id, child_id)
-                for id in ids
-                for child_id in self._get_tracked_children(child_mapping, id)
-            ]
-            await self._delete(child_mapping, child_entities)
+            to_delete = list[Entity]()
 
-        recs = [mapping.id_to_record(mapping.id_from_entity(e)) for e in entities]
+            for e in entities:
+                primary_key = mapping.primary_key_from_entity(e)
+                for child_eid in self._idm.get_tracked_children(child_mapping.entity_type, primary_key):
+                    to_delete.append(self._idm.get_tracked(child_eid))
+
+            if to_delete:
+                await self._delete(child_mapping, to_delete)
+
         stmt = SQLDelete(
             from_table=sql_qn(mapping.schema, mapping.table),
-            where=sql_all([sql_eq(sql_n(c), sql_param(i)) for i, c in enumerate(mapping.primary_cols)]),
-            returning=[sql_n(c) for c in mapping.primary_cols + mapping.parental_cols],
+            where=sql_all([sql_eq(sql_n(f.column), sql_param(f.column)) for f in mapping.get_key_fields()]),
+            returning=[sql_n(f.column) for f in mapping.get_key_fields()],
         )
-        param_maps = (ParamMap((i, rec[c]) for i, c in enumerate(mapping.primary_cols)) for rec in recs)
-        deleted_recs = await self._backend.delete(stmt, *param_maps)
+        param_maps = [ParamMap((f.column, f.accessor.get(e)) for f in mapping.get_key_fields()) for e in entities]
+        rows = await self._backend.delete(stmt, *param_maps)
 
-        deleted = dict[Key, bool]()
-        for rec in deleted_recs:
-            id = mapping.id_from_record(rec)
-            parental_key = mapping.parental_key_from_record(rec)
-            self._untrack(mapping, parental_key, id)
-            deleted[id] = True
-
-        return [deleted.get(id, False) for id in ids]
+        for row in rows:
+            eid = mapping.key_from_record(row)
+            self._idm.untrack(eid)
 
     async def fetch_session_entity_query(self, query: "SessionEntityQuery", limit: int | None, offset: int | None):
         params = ParamMap(query.params)
@@ -385,64 +416,68 @@ class Session:
         offset_ref = query.ctx.new_param_id()
         params.update({limit_ref: limit, offset_ref: offset})
         select_stmt = SQLSelect(
-            select=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            select=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
             where=sql_all(query.where_conds) if query.where_conds else None,
-            group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            group_by=[sql_qn(query.alias, c.column) for c in query.mapping.get_primary_fields()],
             having=sql_all(query.having_conds) if query.having_conds else None,
             order_bys=query.order_by_opts,
             limit=sql_param(limit_ref),
             offset=sql_param(offset_ref),
         )
-        recs = await self._backend.select(select_stmt, params)
-        ids = [query.mapping.id_from_record(rec) for rec in recs]
-        return await self.batch_get(query.mapping.entity_type, ids)
+        rows = await self._backend.select(select_stmt, params)
+        keys = [Key(row) for row in rows]
+        entities = await self._get(query.mapping, [f.column for f in query.mapping.get_primary_fields()], keys)
+        return list(entities.values())
 
     async def count_session_entity_query(self, query: "SessionEntityQuery"):
         select_stmt = SQLSelect(
-            select=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            select=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
             where=sql_all(query.where_conds) if query.where_conds else None,
-            group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            group_by=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
             having=sql_all(query.having_conds) if query.having_conds else None,
         )
         return await self._backend.count(select_stmt, query.params)
 
     class PageOpts(typing.NamedTuple):
         first: int | None
-        after: Key | None
+        after: KeyLike | None
         last: int | None
-        before: Key | None
+        before: KeyLike | None
         offset: int | None
 
     class Page(typing.NamedTuple):
-        cursors: list[Key]
+        cursors: list[KeyLike]
         has_previous_page: bool
         has_next_page: bool
 
     async def paginate_session_entity_query(self, query: "SessionEntityQuery", opts: PageOpts):
         first, after, last, before, offset = opts
 
+        after = Key.from_key_like(after) if after else None
+        before = Key.from_key_like(before) if before else None
+
         order_by = [*query.order_by_opts]
-        for c in query.mapping.primary_cols:
-            order_by.append(SQLSelect.OrderBy(sql_qn(query.alias, c)))
+        for f in query.mapping.get_primary_fields():
+            order_by.append(SQLSelect.OrderBy(sql_qn(query.alias, f.column)))
         if last is not None:
             order_by = [SQLSelect.OrderBy(o.expr, not o.ascending, not o.nulls_last) for o in order_by]
 
         params = ParamMap(query.params)
         filters = query.having_conds.copy()
 
-        if after_rec := await self._fetch_cursor_rec(query, order_by, after) if after else None:
-            after_params = ParamMap((query.ctx.new_param_id(), v) for v in after_rec.values())
+        if after_row := await self._fetch_cursor_rec(query, order_by, after) if after else None:
+            after_params = ParamMap((query.ctx.new_param_id(), v) for v in after_row)
             predicate = self._format_cursor_predicate(order_by, after_params, last is None)
             filters.append(predicate)
             params.update(after_params)
-        if before_rec := await self._fetch_cursor_rec(query, order_by, before) if before else None:
-            before_params = ParamMap((query.ctx.new_param_id(), v) for v in before_rec.values())
+        if before_row := await self._fetch_cursor_rec(query, order_by, before) if before else None:
+            before_params = ParamMap((query.ctx.new_param_id(), v) for v in before_row)
             predicate = self._format_cursor_predicate(order_by, before_params, last is not None)
             filters.append(predicate)
             params.update(before_params)
@@ -453,40 +488,40 @@ class Session:
         params.update({limit_ref: limit + 1 if limit else None, offset_ref: offset})
 
         select_stmt = SQLSelect(
-            select=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            select=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
             where=sql_all(query.where_conds) if query.where_conds else None,
-            group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            group_by=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
             having=sql_all(filters) if filters else None,
             order_bys=order_by,
             limit=sql_param(limit_ref),
             offset=sql_param(offset_ref),
         )
-        records = await self._backend.select(select_stmt, params)
+        rows = await self._backend.select(select_stmt, params)
 
-        keys_records = records[:limit]
+        keys_records = rows[:limit]
 
         if last is None:
-            has_previous_page = bool(after_rec) or bool(offset)
-            has_next_page = len(records) > limit if limit else False
+            has_previous_page = bool(after_row) or bool(offset)
+            has_next_page = len(rows) > limit if limit else False
         else:
-            has_previous_page = len(records) > limit if limit else False
-            has_next_page = bool(before_rec) or bool(offset)
+            has_previous_page = len(rows) > limit if limit else False
+            has_next_page = bool(before_row) or bool(offset)
             keys_records.reverse()
 
-        ids = [query.mapping.id_from_record(rec) for rec in keys_records]
-        return self.Page(ids, has_previous_page, has_next_page)
+        pks = [query.mapping.primary_key_from_record(rec) for rec in keys_records]
+        cursors = [pk[0] if len(pk) == 1 else pk for pk in pks]
+        return self.Page(cursors, has_previous_page, has_next_page)
 
     async def _fetch_cursor_rec(self, query: "SessionEntityQuery", order_bys: Sequence[SQLSelect.OrderBy], cursor: Key):
-        cursor_rec = query.mapping.id_to_record(cursor)
         params = ParamMap(query.params)
         filters = query.having_conds.copy()
-        for c in query.mapping.primary_cols:
+        for f, value in zip(query.mapping.get_primary_fields(), cursor):
             param_id = query.ctx.new_param_id()
-            params[param_id] = cursor_rec[c]
-            filters.append(sql_eq(sql_qn(query.alias, c), sql_param(param_id)))
+            params[param_id] = value
+            filters.append(sql_eq(sql_qn(query.alias, f.column), sql_param(param_id)))
 
         select_stmt = SQLSelect(
             select=[o.expr for o in order_bys],
@@ -494,11 +529,11 @@ class Session:
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
             where=sql_all(query.where_conds) if query.where_conds else None,
-            group_by=[sql_qn(query.alias, c) for c in query.mapping.primary_cols],
+            group_by=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
             having=sql_all(filters),
         )
-        recs = await self._backend.select(select_stmt, params)
-        return recs[0] if recs else None
+        rows = await self._backend.select(select_stmt, params)
+        return rows[0] if rows else None
 
     def _format_cursor_predicate(self, order_bys: list[SQLSelect.OrderBy], params: ParamMap, is_forward: bool):
         param_refs = [sql_param(i) for i in params]
@@ -531,29 +566,6 @@ class Session:
     def get_mapping(self, entity_type: type):
         return self._mappings[entity_type]
 
-    _idm: dict[tuple[type, Key], dict[Key, object]]
-
-    def _track(self, entity: Entity):
-        mapping = self.get_mapping(type(entity))
-        parental_key = mapping.parental_key_from_entity(entity)
-        scope = self._idm.setdefault((mapping.entity_type, parental_key), {})
-        scope[mapping.id_from_entity(entity)] = entity
-
-    def _untrack(self, mapping: EntityMapping, parental_key: Key, id: Key):
-        self._idm[(mapping.entity_type, parental_key)].pop(id, None)
-
-    def _in_track(self, entity: Entity):
-        mapping = self.get_mapping(type(entity))
-        parental_key = mapping.parental_key_from_entity(entity)
-        id = mapping.id_from_entity(entity)
-        return id in self._idm.get((mapping.entity_type, parental_key), {})
-
-    def _get_tracked(self, mapping: EntityMapping, parental_key: Key, id: Key):
-        return self._idm.get((mapping.entity_type, parental_key), {}).get(id)
-
-    def _get_tracked_children(self, mapping: EntityMapping, parental_key: Key):
-        return self._idm.get((mapping.entity_type, parental_key), {})
-
 
 class SQLBuildingContext:
     def __init__(self, start_pointer=0):
@@ -562,7 +574,7 @@ class SQLBuildingContext:
     _patt_word = re.compile(r"('[^']*'|\"[^\"]*\"|\s+|::|:\w+|\w+|[^\w\s])")
     _patt_param = re.compile(r":(\w+)")
 
-    def parse(self, sql: str, params: dict[str, PostgresCodable]):
+    def parse(self, sql: str, params: dict[str, Value]):
         tokens = list[SQL]()
         words: list[str] = self._patt_word.findall(sql)
         param_index_map = dict[str, int]()
@@ -656,9 +668,9 @@ class SessionEntityQuery(typing.Generic[TEntity]):
     async def paginate(
         self,
         first: int | None = None,
-        after: Key | None = None,
+        after: KeyLike | None = None,
         last: int | None = None,
-        before: Key | None = None,
+        before: KeyLike | None = None,
         offset: int | None = None,
     ):
         opts = Session.PageOpts(first, after, last, before, offset)
@@ -683,7 +695,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
 
 
 class SessionRawQuery:
-    def __init__(self, session: "Session", query: str, params: dict[str, PostgresCodable]):
+    def __init__(self, session: "Session", query: str, params: dict[str, Value]):
         self._session = session
         self.fragment, self.params = SQLBuildingContext().parse(query, params)
 
@@ -703,33 +715,28 @@ class AsyncPGSessionBackend(SessionBackend):
 
     async def select(self, stmt: SQLSelect, *param_maps: ParamMap):
         query, param_lists = self.Renderer().render_select(stmt, *param_maps)
-        records = await self._active.fetchmany(query, param_lists)
-        return [dict(rec.items()) for rec in records]
+        return await self._active.fetchmany(query, param_lists)
 
     async def insert(self, stmt: SQLInsert, *param_maps: ParamMap):
         query, param_lists = self.Renderer().render_insert(stmt, *param_maps)
-        records = await self._active.fetchmany(query, param_lists)
-        return [dict(rec.items()) for rec in records]
+        return await self._active.fetchmany(query, param_lists)
 
     async def update(self, stmt: SQLUpdate, *param_maps: ParamMap):
         query, param_lists = self.Renderer().render_update(stmt, *param_maps)
-        records = await self._active.fetchmany(query, param_lists)
-        return [dict(rec.items()) for rec in records]
+        return await self._active.fetchmany(query, param_lists)
 
     async def delete(self, stmt: SQLDelete, *param_maps: ParamMap):
         query, param_lists = self.Renderer().render_delete(stmt, *param_maps)
-        records = await self._active.fetchmany(query, param_lists)
-        return [dict(rec.items()) for rec in records]
+        return await self._active.fetchmany(query, param_lists)
 
     async def count(self, stmt: SQLSelect, param_map: ParamMap):
         query, param_list = self.Renderer().render_count(stmt, param_map)
-        records = await self._active.fetch(query, *param_list)
-        return records[0]["count"]
+        rows = await self._active.fetch(query, *param_list)
+        return rows[0][0]
 
     async def fetch_raw(self, raw: SQL, param_map: ParamMap):
         query, param_list = self.Renderer().render_raw(raw, param_map)
-        records = await self._active.fetch(query, *param_list)
-        return [dict(rec.items()) for rec in records]
+        return await self._active.fetch(query, *param_list)
 
     async def begin(self):
         assert not self._tx
@@ -907,11 +914,6 @@ class AutoMappingBuilder:
         field_configs = dict(opts.get("fields", ()))
         child_configs = dict(opts.get("children", ()))
 
-        primary = opts.get("primary_key", ["id"])
-        primary = [primary] if isinstance(primary, str) else list(primary)
-        parental = opts.get("parental_key", [])
-        parental = [parental] if isinstance(parental, str) else list(parental)
-
         for name, type_hint in typing.get_type_hints(entity_type).items():
             origin = typing.get_origin(type_hint)
             args = typing.get_args(type_hint)
@@ -938,48 +940,45 @@ class AutoMappingBuilder:
             else:
                 field_configs[name] = self.FieldConfig(column=self._column_name(name))
 
-        fields = {name: self._build_field(name, config, primary, parental) for name, config in field_configs.items()}
+        fields = {name: self._build_field(name, config) for name, config in field_configs.items()}
         children = {name: self._build_child(name, config) for name, config in child_configs.items()}
+
+        primary = opts.get("primary_key", ["id"])
+        primary = [primary] if isinstance(primary, str) else list(primary)
+        parental = opts.get("parental_key", [])
+        parental = [parental] if isinstance(parental, str) else list(parental)
+        skip_on_insert = [fn for fn, fc in field_configs.items() if fc.get("skip_on_insert")]
+        skip_on_update = [fn for fn, fc in field_configs.items() if fc.get("skip_on_update")]
+        key = primary + parental
+        full = key + [fn for fn in fields if fn not in key]
+        insertable = [fn for fn in fields if fn in parental or fn not in skip_on_insert]
+        updatable = [fn for fn in fields if not (fn in skip_on_update or fn in key)]
 
         return EntityMapping(
             entity_type=entity_type,
             schema=opts.get("schema", "public"),
             table=opts.get("table", self._table_name(entity_type.__name__)),
             fields=fields,
-            primary_key_fields=primary,
-            parental_key_fields=parental,
             children=children,
-            entity_factory=opts.get("factory", lambda: object.__new__(entity_type)),
+            entity_factory=opts.get("factory", DefaultEntityFactory(entity_type)),
+            primary_key=primary,
+            parental_key=parental,
+            insertable=insertable,
+            updatable=updatable,
+            key=key,
+            full=full,
         )
 
-    def _build_field(self, name: str, config: FieldConfig, primary: list[str], parental: list[str]):
+    def _build_field(self, name: str, config: FieldConfig):
         column = config["column"] if "column" in config else self._column_name(name)
-        is_primary = name in primary
-        is_parental = name in parental
-        skip_on_insert = config.get("skip_on_insert", False)
-        skip_on_update = config.get("skip_on_update", False)
-        return Field(
-            column=column,
-            insertable=is_parental or not skip_on_insert,
-            updatable=not (is_primary or is_parental or skip_on_update),
-            getter=lambda entity, name=name: getattr(entity, name, None),
-            setter=lambda entity, value, name=name: setattr(entity, name, value),
-        )
+        return Field(column, DefaultFieldPropertyAccessor(name))
 
     def _build_child(self, name: str, config: ChildConfig):
         target = config["target"] if isinstance(config["target"], type) else config["target"]()
         if config["kind"] == "singular":
-            return Child(
-                target=target,
-                getter=lambda entity: tuple(i for i in (getattr(entity, name),) if i is not None),
-                setter=lambda entity, value: setattr(entity, name, next(iter(value), None)),
-            )
+            return Child(target, DefaultSingularChildAccessor(name))
         else:
-            return Child(
-                target=target,
-                getter=lambda entity, name=name: getattr(entity, name) or (),
-                setter=lambda entity, value, name=name: setattr(entity, name, list(value)),
-            )
+            return Child(target, DefaultPluralChildAccessor(name))
 
     _name_patt = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
@@ -988,6 +987,43 @@ class AutoMappingBuilder:
 
     def _table_name(self, s: str):
         return self._name_patt.sub("_", s).lower()
+
+
+class DefaultFieldPropertyAccessor(typing.NamedTuple):
+    name: str
+
+    def get(self, entity: Entity) -> Value:
+        return getattr(entity, self.name, None)
+
+    def set(self, entity: Entity, value: Value):
+        setattr(entity, self.name, value)
+
+
+class DefaultSingularChildAccessor(typing.NamedTuple):
+    name: str
+
+    def get(self, entity: Entity) -> Sequence[Entity]:
+        return tuple(i for i in (getattr(entity, self.name), None) if i is not None)
+
+    def set(self, entity: Entity, value: Sequence[Entity]):
+        setattr(entity, self.name, next(iter(value), None))
+
+
+class DefaultPluralChildAccessor(typing.NamedTuple):
+    name: str
+
+    def get(self, entity: Entity) -> Sequence[Entity]:
+        return getattr(entity, self.name, ())
+
+    def set(self, entity: Entity, value: Sequence[Entity]):
+        setattr(entity, self.name, list(value))
+
+
+class DefaultEntityFactory(typing.NamedTuple):
+    entity_type: type
+
+    def create(self):
+        return object.__new__(self.entity_type)
 
 
 auto = AutoMappingBuilder()
