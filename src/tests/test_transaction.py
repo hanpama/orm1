@@ -158,8 +158,7 @@ class TransactionTest(unittest.IsolatedAsyncioTestCase):
 
         assert str(rollback_err) == "rollback"
 
-        deleted = await session.delete(blog_post)
-        assert not deleted
+        await session.delete(blog_post)
 
     async def test_delete_commit_get(self) -> None:
         session = self.session()

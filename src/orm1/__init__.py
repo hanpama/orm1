@@ -8,17 +8,17 @@ import asyncpg
 import asyncpg.transaction
 
 Entity = object
-KeyLike = typing.Union[typing.Hashable, typing.Sequence[typing.Hashable]]
+KeyLike = typing.Union[typing.Hashable, tuple[typing.Hashable]]
 Value = typing.Any
-Row = tuple[Value, ...]
 ParamMap = dict[typing.Hashable, Value]
 TEntity = typing.TypeVar("TEntity", bound=Entity)
+Record = dict[str, Value]
 
 
 class Key(tuple[typing.Hashable]):
     @classmethod
     def from_key_like(cls, key_like: KeyLike) -> "Key":
-        return cls(key_like) if isinstance(key_like, Sequence) else cls((key_like,))
+        return cls(key_like) if isinstance(key_like, tuple) else cls((key_like,))
 
 
 class AttributeAccessor(typing.Protocol):
@@ -31,6 +31,7 @@ class EntityFactory(typing.Protocol):
 
 
 class Field(typing.NamedTuple):
+    name: str
     column: str
     accessor: AttributeAccessor
 
@@ -83,14 +84,9 @@ class EntityMapping(typing.NamedTuple):
     parental_key: list[str]
     insertable: list[str]
     updatable: list[str]
-    key: list[str]
-    full: list[str]
 
-    def get_key_fields(self):
-        return [self.fields[fn] for fn in self.key]
-
-    def get_full_fields(self):
-        return [self.fields[fn] for fn in self.full]
+    def get_fields(self):
+        return self.fields.values()
 
     def get_insertable_fields(self):
         return [self.fields[fn] for fn in self.insertable]
@@ -104,14 +100,11 @@ class EntityMapping(typing.NamedTuple):
     def get_parental_fields(self):
         return [self.fields[fn] for fn in self.parental_key]
 
-    def primary_key_from_row(self, row: Row) -> Key:
-        return Key(row[i] for i, _ in enumerate(self.get_primary_fields()))
-
     def primary_key_from_entity(self, entity: Entity) -> Key:
-        return Key(f.accessor.get(entity) for f in self.get_primary_fields())
+        return Key(self.fields[fn].accessor.get(entity) for fn in self.primary_key)
 
     def parental_key_from_entity(self, entity: Entity) -> Key:
-        return Key(f.accessor.get(entity) for f in self.get_parental_fields())
+        return Key(self.fields[fn].accessor.get(entity) for fn in self.parental_key)
 
     def identify_entity(self, entity: Entity) -> EntityIdentity:
         return EntityIdentity(
@@ -120,17 +113,16 @@ class EntityMapping(typing.NamedTuple):
             primary_key=self.primary_key_from_entity(entity),
         )
 
-    def identify_row(self, row: Row) -> EntityIdentity:
-        kvs = {f: v for f, v in zip(self.key, row)}
+    def identify_record(self, rec: Record) -> EntityIdentity:
         return EntityIdentity(
             type=self.entity_type,
-            parental_key=Key(kvs[f] for f in self.parental_key),
-            primary_key=Key(kvs[f] for f in self.primary_key),
+            parental_key=Key(rec[f] for f in self.parental_key),
+            primary_key=Key(rec[f] for f in self.primary_key),
         )
 
-    def write_to_entity(self, entity: Entity, fields: list[Field], row: Row):
-        for i, field in enumerate(fields):
-            field.accessor.set(entity, row[i])
+    def write_to_entity(self, entity: Entity, rec: Record):
+        for fn in rec:
+            self.fields[fn].accessor.set(entity, rec[fn])
 
 
 sql_n = typing.NamedTuple("sql_n", [("part", str)])
@@ -203,14 +195,16 @@ class SQLUpdate(typing.NamedTuple):
 class SQLDelete(typing.NamedTuple):
     from_table: SQL
     where: SQL
-    returning: Collection[SQL]
+
+
+Row = tuple[Value, ...]
 
 
 class SessionBackend(typing.Protocol):
     async def select(self, stmt: SQLSelect, *param_maps: ParamMap) -> list[Row]: ...
     async def insert(self, stmt: SQLInsert, *param_maps: ParamMap) -> list[Row]: ...
     async def update(self, stmt: SQLUpdate, *param_maps: ParamMap) -> list[Row]: ...
-    async def delete(self, stmt: SQLDelete, *param_maps: ParamMap) -> list[Row]: ...
+    async def delete(self, stmt: SQLDelete, *param_maps: ParamMap): ...
     async def count(self, stmt: SQLSelect, param_map: ParamMap) -> int: ...
     async def fetch_raw(self, raw: SQL, param_map: ParamMap) -> list[Row]: ...
     async def begin(self): ...
@@ -242,7 +236,7 @@ class Session:
         primary_keys = [Key.from_key_like(id) for id in ids]
         entity_map = await self._get(
             mapping=mapping,
-            where=[f.column for f in mapping.get_primary_fields()],
+            key_cols=[f.column for f in mapping.get_primary_fields()],
             keys=primary_keys,
         )
         return typing.cast(list[TEntity | None], [entity_map.get(pk) for pk in primary_keys])
@@ -253,7 +247,127 @@ class Session:
 
     async def batch_delete(self, entity_type: Type[TEntity], *entities: TEntity):
         mapping = self.get_mapping(entity_type)
-        await self._delete(mapping, entities)
+        if to_delete := [e for e in entities if self._idm.in_track(mapping.identify_entity(e))]:
+            await self._delete(mapping, to_delete)
+
+    async def _get(self, mapping: EntityMapping, key_cols: list[str], keys: list[Key]):
+        select_stmt = SQLSelect(
+            select=[sql_qn("t", f.column) for f in mapping.get_fields()],
+            from_table=sql_qn(mapping.schema, mapping.table),
+            from_alias=sql_n("t"),
+            where=sql_all([sql_eq(sql_qn("t", c), sql_param(c)) for c in key_cols]),
+        )
+        param_maps = [ParamMap((k, v) for k, v in zip(key_cols, key)) for key in keys]
+        rows = await self._backend.select(select_stmt, *param_maps)
+        records = [{f.name: val for f, val in zip(mapping.get_fields(), row)} for row in rows]
+
+        ent_map: dict[Key, Entity] = {}
+        for rec in records:
+            eid = mapping.identify_record(rec)
+            entity = self._idm.get_tracked(eid) or mapping.entity_factory.create()
+            mapping.write_to_entity(entity, rec)
+            self._idm.track(eid, entity)
+            ent_map[eid.primary_key] = entity
+
+        for child in mapping.children.values():
+            child_mapping = self.get_mapping(child.target)
+            child_ent_map = await self._get(
+                mapping=child_mapping,
+                key_cols=[f.column for f in child_mapping.get_parental_fields()],
+                keys=list(ent_map.keys()),
+            )
+
+            child_groups = dict[Key, list[Entity]]()
+            for child_entity in child_ent_map.values():
+                parental_key = child_mapping.parental_key_from_entity(child_entity)
+                child_groups.setdefault(parental_key, []).append(child_entity)
+
+            for primary_key, entity in ent_map.items():
+                child.accessor.set(entity, child_groups.get(primary_key, ()))
+
+        return ent_map
+
+    async def _save(self, mapping: EntityMapping, entities: list[Entity]):
+        if to_update := [e for e in entities if self._idm.in_track(mapping.identify_entity(e))]:
+            update_stmt = SQLUpdate(
+                table=sql_qn(mapping.schema, mapping.table),
+                sets=[(sql_n(f.column), sql_param(f.column)) for f in mapping.get_updatable_fields()],
+                where=sql_all([sql_eq(sql_n(f.column), sql_param(f.column)) for f in mapping.get_primary_fields()]),
+                returning=[sql_n(f.column) for f in mapping.get_fields()],
+            )
+            param_fields = [*mapping.get_updatable_fields(), *mapping.get_primary_fields()]
+            param_maps = [ParamMap((f.column, f.accessor.get(e)) for f in param_fields) for e in to_update]
+            rows = await self._backend.update(update_stmt, *param_maps)
+
+            for e, row in zip(to_update, rows):
+                rec = {f.name: v for f, v in zip(mapping.get_fields(), row)}
+                mapping.write_to_entity(e, rec)
+                self._idm.track(mapping.identify_entity(e), e)
+
+        if to_insert := [e for e in entities if not self._idm.in_track(mapping.identify_entity(e))]:
+            insert_stmt = SQLInsert(
+                into_table=sql_qn(mapping.schema, mapping.table),
+                insert=[sql_n(f.column) for f in mapping.get_insertable_fields()],
+                values=[sql_param(f.column) for f in mapping.get_insertable_fields()],
+                returning=[sql_n(f.column) for f in mapping.get_fields()],
+            )
+            param_fields = mapping.get_insertable_fields()
+            param_maps = [ParamMap((f.column, f.accessor.get(e)) for f in param_fields) for e in to_insert]
+            rows = await self._backend.insert(insert_stmt, *param_maps)
+
+            for e, row in zip(to_insert, rows):
+                rec = {f.name: v for f, v in zip(mapping.get_fields(), row)}
+                mapping.write_to_entity(e, rec)
+                self._idm.track(mapping.identify_entity(e), e)
+
+        for child in mapping.children.values():
+            child_mapping = self.get_mapping(child.target)
+            to_delete = list[Entity]()
+            to_save = list[Entity]()
+            for entity in entities:
+                primary_key = mapping.primary_key_from_entity(entity)
+                child_entities = child.accessor.get(entity)
+
+                parental_key = dict(zip(child_mapping.parental_key, primary_key))
+                for child_entity in child_entities:
+                    child_mapping.write_to_entity(child_entity, parental_key)
+
+                current_ids = {child_mapping.identify_entity(e) for e in child_entities}
+                previous_ids = self._idm.get_tracked_children(child_mapping.entity_type, primary_key)
+
+                for id in previous_ids - current_ids:
+                    to_delete.append(self._idm.get_tracked(id))
+
+                for child_entity in child_entities:
+                    to_save.append(child_entity)
+
+            if to_delete:
+                await self._delete(child_mapping, to_delete)
+            if to_save:
+                await self._save(child_mapping, to_save)
+
+    async def _delete(self, mapping: EntityMapping, entities: Collection[Entity]):
+        for child in mapping.children.values():
+            child_mapping = self.get_mapping(child.target)
+            to_delete = list[Entity]()
+
+            for e in entities:
+                primary_key = mapping.primary_key_from_entity(e)
+                for child_eid in self._idm.get_tracked_children(child_mapping.entity_type, primary_key):
+                    to_delete.append(self._idm.get_tracked(child_eid))
+
+            if to_delete:
+                await self._delete(child_mapping, to_delete)
+
+        stmt = SQLDelete(
+            from_table=sql_qn(mapping.schema, mapping.table),
+            where=sql_all([sql_eq(sql_n(f.column), sql_param(f.column)) for f in mapping.get_primary_fields()]),
+        )
+        param_maps = [ParamMap((f.column, f.accessor.get(e)) for f in mapping.get_primary_fields()) for e in entities]
+        await self._backend.delete(stmt, *param_maps)
+
+        for entity in entities:
+            self._idm.untrack(mapping.identify_entity(entity))
 
     def query(self, entity_type: Type[TEntity], alias: str):
         return SessionEntityQuery[TEntity](self, self.get_mapping(entity_type), alias)
@@ -293,122 +407,6 @@ class Session:
             await self._backend.rollback()
         else:
             await self._backend.rollback_to(f"tx_{self._tx_depth}")
-
-    async def _get(self, mapping: EntityMapping, where: list[str], keys: list[Key]):
-        select_stmt = SQLSelect(
-            select=[sql_qn("t", f.column) for f in mapping.get_full_fields()],
-            from_table=sql_qn(mapping.schema, mapping.table),
-            from_alias=sql_n("t"),
-            where=sql_all([sql_eq(sql_qn("t", c), sql_param(c)) for c in where]),
-        )
-        param_lists = [ParamMap((k, v) for k, v in zip(where, key)) for key in keys]
-        rows = await self._backend.select(select_stmt, *param_lists)
-        ent_map: dict[Key, Entity] = {}
-        for row in rows:
-            eid = mapping.identify_row(row)
-            entity = self._idm.get_tracked(eid) or mapping.entity_factory.create()
-            mapping.write_to_entity(entity, mapping.get_full_fields(), row)
-            self._idm.track(eid, entity)
-            ent_map[eid.primary_key] = entity
-
-        for child in mapping.children.values():
-            child_mapping = self.get_mapping(child.target)
-            child_ent_map = await self._get(
-                mapping=child_mapping,
-                where=[f.column for f in child_mapping.get_parental_fields()],
-                keys=list(ent_map.keys()),
-            )
-
-            child_groups = dict[Key, list[Entity]]()
-            for child_entity in child_ent_map.values():
-                parental_key = child_mapping.parental_key_from_entity(child_entity)
-                child_groups.setdefault(parental_key, []).append(child_entity)
-
-            for id, entity in ent_map.items():
-                child.accessor.set(entity, child_groups.get(id, ()))
-
-        return ent_map
-
-    async def _save(self, mapping: EntityMapping, entities: list[Entity]):
-        if to_update := [e for e in entities if self._idm.in_track(mapping.identify_entity(e))]:
-            update_stmt = SQLUpdate(
-                table=sql_qn(mapping.schema, mapping.table),
-                sets=[(sql_n(f.column), sql_param(f.column)) for f in mapping.get_updatable_fields()],
-                where=sql_all([sql_eq(sql_n(f.column), sql_param(f.column)) for f in mapping.get_primary_fields()]),
-                returning=[sql_n(f.column) for f in mapping.get_full_fields()],
-            )
-            param_fields = [*mapping.get_updatable_fields(), *mapping.get_primary_fields()]
-            param_lists = [ParamMap((f.column, f.accessor.get(e)) for f in param_fields) for e in to_update]
-            rows = await self._backend.update(update_stmt, *param_lists)
-
-            for e, r in zip(to_update, rows):
-                mapping.write_to_entity(e, mapping.get_full_fields(), r)
-
-        if to_insert := [e for e in entities if not self._idm.in_track(mapping.identify_entity(e))]:
-            insert_stmt = SQLInsert(
-                into_table=sql_qn(mapping.schema, mapping.table),
-                insert=[sql_n(f.column) for f in mapping.get_insertable_fields()],
-                values=[sql_param(f.column) for f in mapping.get_insertable_fields()],
-                returning=[sql_n(f.column) for f in mapping.get_full_fields()],
-            )
-            param_fields = mapping.get_insertable_fields()
-            param_lists = [ParamMap((f.column, f.accessor.get(e)) for f in param_fields) for e in to_insert]
-            rows = await self._backend.insert(insert_stmt, *param_lists)
-
-            for e, r in zip(to_insert, rows):
-                mapping.write_to_entity(e, mapping.get_full_fields(), r)
-                self._idm.track(mapping.identify_entity(e), e)
-
-        for child in mapping.children.values():
-            child_mapping = self.get_mapping(child.target)
-            to_delete = list[Entity]()
-            to_save = list[Entity]()
-            for entity in to_update:
-                primary_key = mapping.primary_key_from_entity(entity)
-                child_entities = child.accessor.get(entity)
-
-                current_eids = {child_mapping.identify_entity(e) for e in child_entities}
-                previous_eids = self._idm.get_tracked_children(child_mapping.entity_type, primary_key)
-
-                for eid in previous_eids - current_eids:
-                    to_delete.append(self._idm.get_tracked(eid))
-
-            for entity in entities:
-                eid = mapping.identify_entity(entity)
-                child_entities = child.accessor.get(entity)
-                for child_entity in child_entities:
-                    child_mapping.write_to_entity(child_entity, child_mapping.get_parental_fields(), eid.primary_key)
-                    to_save.append(child_entity)
-
-            if to_delete:
-                await self._delete(child_mapping, to_delete)
-            if to_save:
-                await self._save(child_mapping, to_save)
-
-    async def _delete(self, mapping: EntityMapping, entities: Collection[Entity]):
-        for child in mapping.children.values():
-            child_mapping = self.get_mapping(child.target)
-            to_delete = list[Entity]()
-
-            for e in entities:
-                primary_key = mapping.primary_key_from_entity(e)
-                for child_eid in self._idm.get_tracked_children(child_mapping.entity_type, primary_key):
-                    to_delete.append(self._idm.get_tracked(child_eid))
-
-            if to_delete:
-                await self._delete(child_mapping, to_delete)
-
-        stmt = SQLDelete(
-            from_table=sql_qn(mapping.schema, mapping.table),
-            where=sql_all([sql_eq(sql_n(f.column), sql_param(f.column)) for f in mapping.get_key_fields()]),
-            returning=[sql_n(f.column) for f in mapping.get_key_fields()],
-        )
-        param_maps = [ParamMap((f.column, f.accessor.get(e)) for f in mapping.get_key_fields()) for e in entities]
-        rows = await self._backend.delete(stmt, *param_maps)
-
-        for row in rows:
-            eid = mapping.identify_row(row)
-            self._idm.untrack(eid)
 
     async def fetch_session_entity_query(self, query: "SessionEntityQuery", limit: int | None, offset: int | None):
         params = ParamMap(query.params)
@@ -487,20 +485,20 @@ class Session:
         offset_ref = query.ctx.new_param_id()
         params.update({limit_ref: limit + 1 if limit else None, offset_ref: offset})
 
+        record_fields = query.mapping.get_primary_fields()
         select_stmt = SQLSelect(
-            select=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
+            select=[sql_qn(query.alias, f.column) for f in record_fields],
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
             where=sql_all(query.where_conds) if query.where_conds else None,
-            group_by=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
+            group_by=[sql_qn(query.alias, f.column) for f in record_fields],
             having=sql_all(filters) if filters else None,
             order_bys=order_by,
             limit=sql_param(limit_ref),
             offset=sql_param(offset_ref),
         )
         rows = await self._backend.select(select_stmt, params)
-
         key_rows = rows[:limit]
 
         if last is None:
@@ -511,8 +509,7 @@ class Session:
             has_next_page = bool(before_row) or bool(offset)
             key_rows.reverse()
 
-        pks = [query.mapping.primary_key_from_row(row) for row in key_rows]
-        cursors = [pk[0] if len(pk) == 1 else pk for pk in pks]
+        cursors: list[KeyLike] = [row[0] if len(row) == 1 else tuple(row) for row in key_rows]
         return self.Page(cursors, has_previous_page, has_next_page)
 
     async def _fetch_cursor_row(self, query: "SessionEntityQuery", order_bys: Sequence[SQLSelect.OrderBy], cursor: Key):
@@ -820,7 +817,6 @@ class AsyncPGSessionBackend(SessionBackend):
         def render_delete(self, stmt: SQLDelete, *param_maps: ParamMap):
             parts = ["DELETE FROM", self._el(stmt.from_table)]
             parts.append(f"WHERE {self._el(stmt.where)}")
-            parts.append(f"RETURNING {', '.join(self._el(i) for i in stmt.returning)}")
             query = " ".join(parts)
             param_lists = [self._ctx.format_params(param_map) for param_map in param_maps]
             return query, param_lists
@@ -949,9 +945,7 @@ class AutoMappingBuilder:
         parental = [parental] if isinstance(parental, str) else list(parental)
         skip_on_insert = [fn for fn, fc in field_configs.items() if fc.get("skip_on_insert")]
         skip_on_update = [fn for fn, fc in field_configs.items() if fc.get("skip_on_update")]
-        key = primary + parental
-        full = key + [fn for fn in fields if fn not in key]
-        insertable = [fn for fn in fields if fn in parental or fn not in skip_on_insert]
+        insertable = [fn for fn in fields if fn not in skip_on_insert]
         updatable = [fn for fn in fields if not (fn in skip_on_update or fn in primary or fn in parental)]
 
         return EntityMapping(
@@ -965,13 +959,11 @@ class AutoMappingBuilder:
             parental_key=parental,
             insertable=insertable,
             updatable=updatable,
-            key=key,
-            full=full,
         )
 
     def _build_field(self, name: str, config: FieldConfig):
         column = config["column"] if "column" in config else self._column_name(name)
-        return Field(column, FieldAttributeAccessor(name))
+        return Field(name, column, FieldAttributeAccessor(name))
 
     def _build_child(self, name: str, config: ChildConfig):
         target = config["target"] if isinstance(config["target"], type) else config["target"]()

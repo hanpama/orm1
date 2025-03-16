@@ -82,17 +82,15 @@ class AutomapperTest(unittest.TestCase):
             schema="public",
             table="blog_post",
             fields={
-                "id": Field(column="id", accessor=FieldAttributeAccessor("id")),
-                "title": Field(column="title", accessor=FieldAttributeAccessor("title")),
-                "content": Field(column="content", accessor=FieldAttributeAccessor("content")),
+                "id": Field(name="id", column="id", accessor=FieldAttributeAccessor("id")),
+                "title": Field(name="title", column="title", accessor=FieldAttributeAccessor("title")),
+                "content": Field(name="content", column="content", accessor=FieldAttributeAccessor("content")),
             },
             children={},
             primary_key=["id"],
             parental_key=[],
             insertable=["id", "title", "content"],
             updatable=["title", "content"],
-            key=["id"],
-            full=["id", "title", "content"],
         )
 
         assert got == expected
@@ -106,17 +104,15 @@ class AutomapperTest(unittest.TestCase):
             schema="public",
             table="user_post_meta",
             fields={
-                "user_id": Field(column="user_id", accessor=FieldAttributeAccessor("user_id")),
-                "post_id": Field(column="post_id", accessor=FieldAttributeAccessor("post_id")),
-                "note": Field(column="note", accessor=FieldAttributeAccessor("note")),
+                "user_id": Field(name="user_id", column="user_id", accessor=FieldAttributeAccessor("user_id")),
+                "post_id": Field(name="post_id", column="post_id", accessor=FieldAttributeAccessor("post_id")),
+                "note": Field(name="note", column="note", accessor=FieldAttributeAccessor("note")),
             },
             children={},
             primary_key=["user_id", "post_id"],
             parental_key=[],
             insertable=["user_id", "post_id", "note"],
             updatable=["note"],
-            key=["user_id", "post_id"],
-            full=["user_id", "post_id", "note"],
         )
 
         assert got == expected
@@ -131,9 +127,9 @@ class AutomapperTest(unittest.TestCase):
             schema="public",
             table="article",
             fields={
-                "id": Field(column="id", accessor=FieldAttributeAccessor("id")),
-                "title": Field(column="title", accessor=FieldAttributeAccessor("title")),
-                "subtitle": Field(column="subtitle", accessor=FieldAttributeAccessor("subtitle")),
+                "id": Field(name="id", column="id", accessor=FieldAttributeAccessor("id")),
+                "title": Field(name="title", column="title", accessor=FieldAttributeAccessor("title")),
+                "subtitle": Field(name="subtitle", column="subtitle", accessor=FieldAttributeAccessor("subtitle")),
             },
             children={
                 "comments": Child(target=ArticleComment, accessor=PluralChildAttributeAccessor("comments")),
@@ -142,8 +138,6 @@ class AutomapperTest(unittest.TestCase):
             parental_key=[],
             insertable=["id", "title", "subtitle"],
             updatable=["title", "subtitle"],
-            key=["id"],
-            full=["id", "title", "subtitle"],
         )
         assert got == expected
 
@@ -154,17 +148,15 @@ class AutomapperTest(unittest.TestCase):
             schema="public",
             table="article_comment",
             fields={
-                "id": Field(column="id", accessor=FieldAttributeAccessor("id")),
-                "message": Field(column="message", accessor=FieldAttributeAccessor("message")),
-                "article_id": Field(column="article_id", accessor=FieldAttributeAccessor("article_id")),
+                "id": Field(name="id", column="id", accessor=FieldAttributeAccessor("id")),
+                "message": Field(name="message", column="message", accessor=FieldAttributeAccessor("message")),
+                "article_id": Field(name="article_id", column="article_id", accessor=FieldAttributeAccessor("article_id")),
             },
             children={},
             primary_key=["id"],
             parental_key=["article_id"],
             insertable=["id", "message", "article_id"],
             updatable=["message"],
-            key=["id", "article_id"],
-            full=["id", "article_id", "message"],
         )
         assert got == expected
 
@@ -178,8 +170,8 @@ class AutomapperTest(unittest.TestCase):
             schema="public",
             table="payment",
             fields={
-                "id": Field(column="id", accessor=FieldAttributeAccessor("id")),
-                "amount": Field(column="amount", accessor=FieldAttributeAccessor("amount")),
+                "id": Field(name="id", column="id", accessor=FieldAttributeAccessor("id")),
+                "amount": Field(name="amount", column="amount", accessor=FieldAttributeAccessor("amount")),
             },
             children={
                 "refund": Child(target=PaymentRefund, accessor=SingularChildAttributeAccessor("refund")),
@@ -188,8 +180,6 @@ class AutomapperTest(unittest.TestCase):
             parental_key=[],
             insertable=["id", "amount"],
             updatable=["amount"],
-            key=["id"],
-            full=["id", "amount"],
         )
         assert got == expected
 
@@ -200,17 +190,15 @@ class AutomapperTest(unittest.TestCase):
             schema="public",
             table="payment_refund",
             fields={
-                "id": Field(column="id", accessor=FieldAttributeAccessor("id")),
-                "payment_id": Field(column="payment_id", accessor=FieldAttributeAccessor("payment_id")),
-                "amount": Field(column="amount", accessor=FieldAttributeAccessor("amount")),
+                "id": Field(name="id", column="id", accessor=FieldAttributeAccessor("id")),
+                "payment_id": Field(name="payment_id", column="payment_id", accessor=FieldAttributeAccessor("payment_id")),
+                "amount": Field(name="amount", column="amount", accessor=FieldAttributeAccessor("amount")),
             },
             children={},
             primary_key=["id"],
             parental_key=["payment_id"],
             insertable=["id", "payment_id", "amount"],
             updatable=["amount"],
-            key=["id", "payment_id"],
-            full=["id", "payment_id", "amount"],
         )
         assert got == expected
 
@@ -224,8 +212,8 @@ class AutomapperTest(unittest.TestCase):
             schema="public",
             table="user",
             fields={
-                "id": Field(column="id", accessor=FieldAttributeAccessor("id")),
-                "name": Field(column="name", accessor=FieldAttributeAccessor("name")),
+                "id": Field(name="id", column="id", accessor=FieldAttributeAccessor("id")),
+                "name": Field(name="name", column="name", accessor=FieldAttributeAccessor("name")),
             },
             children={
                 "profile": Child(target=UserProfile, accessor=SingularChildAttributeAccessor("profile")),
@@ -234,8 +222,6 @@ class AutomapperTest(unittest.TestCase):
             parental_key=[],
             insertable=["id", "name"],
             updatable=["name"],
-            key=["id"],
-            full=["id", "name"],
         )
         assert got == expected
 
@@ -246,16 +232,14 @@ class AutomapperTest(unittest.TestCase):
             schema="public",
             table="user_profile",
             fields={
-                "id": Field(column="id", accessor=FieldAttributeAccessor("id")),
-                "user_id": Field(column="user_id", accessor=FieldAttributeAccessor("user_id")),
-                "bio": Field(column="bio", accessor=FieldAttributeAccessor("bio")),
+                "id": Field(name="id", column="id", accessor=FieldAttributeAccessor("id")),
+                "user_id": Field(name="user_id", column="user_id", accessor=FieldAttributeAccessor("user_id")),
+                "bio": Field(name="bio", column="bio", accessor=FieldAttributeAccessor("bio")),
             },
             children={},
             primary_key=["id"],
             parental_key=["user_id"],
             insertable=["id", "user_id", "bio"],
             updatable=["bio"],
-            key=["id", "user_id"],
-            full=["id", "user_id", "bio"],
         )
         assert got == expected
