@@ -321,3 +321,40 @@ class AggregateTestCase(AutoRollbackTestCase):
 
         await session.delete(entity)
         assert not await session.get(Purchase, 1)
+
+    async def test_delete_unpersisted_root(self):
+        session = self.session()
+        entity = Purchase(
+            id=3,
+            customer_id=3,
+            price=Decimal("300.00"),
+            line_items=[],
+            billings=[],
+            withdrawal=None,
+        )
+        assert await session.get(Purchase, 3) is None
+        await session.delete(entity)
+        assert await session.get(Purchase, 3) is None
+
+    async def test_delete_unpersisted_child(self):
+        session = self.session()
+        entity = Purchase(
+            id=3,
+            customer_id=3,
+            price=Decimal("300.00"),
+            line_items=[],
+            billings=[],
+            withdrawal=PurchaseWithdrawal(
+                id=3,
+                purchase_id=3,
+                created_at=datetime(2021, 1, 4, 12, 0, 0),
+                remark="Withdrawal remark",
+                attachments=[
+                    PurchaseWithdrawalAttachment(id=3, purchase_withdrawal_id=3, media_uri="http://example.com/9"),
+                    PurchaseWithdrawalAttachment(id=4, purchase_withdrawal_id=3, media_uri="http://example.com/10"),
+                ],
+            ),
+        )
+        assert await session.get(Purchase, 3) is None
+        await session.delete(entity)
+        assert await session.get(Purchase, 3) is None
