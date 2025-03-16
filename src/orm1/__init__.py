@@ -21,7 +21,7 @@ class Key(tuple[typing.Hashable]):
         return cls(key_like) if isinstance(key_like, Sequence) else cls((key_like,))
 
 
-class PropertyAccessor(typing.Protocol):
+class AttributeAccessor(typing.Protocol):
     def get(self, entity: Entity) -> Value: ...
     def set(self, entity: Entity, value: Value): ...
 
@@ -32,12 +32,12 @@ class EntityFactory(typing.Protocol):
 
 class Field(typing.NamedTuple):
     column: str
-    accessor: PropertyAccessor
+    accessor: AttributeAccessor
 
 
 class Child(typing.NamedTuple):
     target: type[Entity]
-    accessor: PropertyAccessor
+    accessor: AttributeAccessor
 
 
 class EntityIdentity(typing.NamedTuple):
@@ -46,7 +46,7 @@ class EntityIdentity(typing.NamedTuple):
     primary_key: Key
 
 
-class EntityIdentityMap:
+class IdentityMap:
     def __init__(self, data: dict[tuple[type, Key], dict[EntityIdentity, object]] | None = None):
         self._idm = data or {}
 
@@ -66,10 +66,10 @@ class EntityIdentityMap:
         return scope.get(identity)
 
     def get_tracked_children(self, type: Type[Entity], parental_key: Key):
-        return self._idm.get((type, parental_key), {}).keys()
+        return set(self._idm.get((type, parental_key), {}).keys())
 
     def copy(self):
-        return EntityIdentityMap({k: dict(v) for k, v in self._idm.items()})
+        return IdentityMap({k: dict(v) for k, v in self._idm.items()})
 
 
 class EntityMapping(typing.NamedTuple):
@@ -104,8 +104,8 @@ class EntityMapping(typing.NamedTuple):
     def get_parental_fields(self):
         return [self.fields[fn] for fn in self.parental_key]
 
-    def primary_key_from_record(self, rec: Row) -> Key:
-        return Key(rec[i] for i, _ in enumerate(self.get_primary_fields()))
+    def primary_key_from_row(self, row: Row) -> Key:
+        return Key(row[i] for i, _ in enumerate(self.get_primary_fields()))
 
     def primary_key_from_entity(self, entity: Entity) -> Key:
         return Key(f.accessor.get(entity) for f in self.get_primary_fields())
@@ -113,15 +113,15 @@ class EntityMapping(typing.NamedTuple):
     def parental_key_from_entity(self, entity: Entity) -> Key:
         return Key(f.accessor.get(entity) for f in self.get_parental_fields())
 
-    def key_from_entity(self, entity: Entity) -> EntityIdentity:
+    def identify_entity(self, entity: Entity) -> EntityIdentity:
         return EntityIdentity(
             type=self.entity_type,
             parental_key=self.parental_key_from_entity(entity),
             primary_key=self.primary_key_from_entity(entity),
         )
 
-    def key_from_record(self, rec: Row) -> EntityIdentity:
-        kvs = {f: v for f, v in zip(self.key, rec)}
+    def identify_row(self, row: Row) -> EntityIdentity:
+        kvs = {f: v for f, v in zip(self.key, row)}
         return EntityIdentity(
             type=self.entity_type,
             parental_key=Key(kvs[f] for f in self.parental_key),
@@ -225,7 +225,7 @@ class Session:
     def __init__(self, backend: SessionBackend, mappings: Collection[EntityMapping]):
         self._backend = backend
         self._mappings = {mapping.entity_type: mapping for mapping in mappings}
-        self._idm = EntityIdentityMap()
+        self._idm = IdentityMap()
         self._tx_depth = 0
 
     async def get(self, entity_type: Type[TEntity], id: KeyLike):
@@ -305,7 +305,7 @@ class Session:
         rows = await self._backend.select(select_stmt, *param_lists)
         ent_map: dict[Key, Entity] = {}
         for row in rows:
-            eid = mapping.key_from_record(row)
+            eid = mapping.identify_row(row)
             entity = self._idm.get_tracked(eid) or mapping.entity_factory.create()
             mapping.write_to_entity(entity, mapping.get_full_fields(), row)
             self._idm.track(eid, entity)
@@ -330,7 +330,7 @@ class Session:
         return ent_map
 
     async def _save(self, mapping: EntityMapping, entities: list[Entity]):
-        if to_update := [e for e in entities if self._idm.in_track(mapping.key_from_entity(e))]:
+        if to_update := [e for e in entities if self._idm.in_track(mapping.identify_entity(e))]:
             update_stmt = SQLUpdate(
                 table=sql_qn(mapping.schema, mapping.table),
                 sets=[(sql_n(f.column), sql_param(f.column)) for f in mapping.get_updatable_fields()],
@@ -344,7 +344,7 @@ class Session:
             for e, r in zip(to_update, rows):
                 mapping.write_to_entity(e, mapping.get_full_fields(), r)
 
-        if to_insert := [e for e in entities if not self._idm.in_track(mapping.key_from_entity(e))]:
+        if to_insert := [e for e in entities if not self._idm.in_track(mapping.identify_entity(e))]:
             insert_stmt = SQLInsert(
                 into_table=sql_qn(mapping.schema, mapping.table),
                 insert=[sql_n(f.column) for f in mapping.get_insertable_fields()],
@@ -357,7 +357,7 @@ class Session:
 
             for e, r in zip(to_insert, rows):
                 mapping.write_to_entity(e, mapping.get_full_fields(), r)
-                self._idm.track(mapping.key_from_entity(e), e)
+                self._idm.track(mapping.identify_entity(e), e)
 
         for child in mapping.children.values():
             child_mapping = self.get_mapping(child.target)
@@ -367,14 +367,14 @@ class Session:
                 primary_key = mapping.primary_key_from_entity(entity)
                 child_entities = child.accessor.get(entity)
 
-                current_eids = {child_mapping.key_from_entity(e) for e in child_entities}
+                current_eids = {child_mapping.identify_entity(e) for e in child_entities}
                 previous_eids = self._idm.get_tracked_children(child_mapping.entity_type, primary_key)
 
                 for eid in previous_eids - current_eids:
                     to_delete.append(self._idm.get_tracked(eid))
 
             for entity in entities:
-                eid = mapping.key_from_entity(entity)
+                eid = mapping.identify_entity(entity)
                 child_entities = child.accessor.get(entity)
                 for child_entity in child_entities:
                     child_mapping.write_to_entity(child_entity, child_mapping.get_parental_fields(), eid.primary_key)
@@ -407,7 +407,7 @@ class Session:
         rows = await self._backend.delete(stmt, *param_maps)
 
         for row in rows:
-            eid = mapping.key_from_record(row)
+            eid = mapping.identify_row(row)
             self._idm.untrack(eid)
 
     async def fetch_session_entity_query(self, query: "SessionEntityQuery", limit: int | None, offset: int | None):
@@ -471,12 +471,12 @@ class Session:
         params = ParamMap(query.params)
         filters = query.having_conds.copy()
 
-        if after_row := await self._fetch_cursor_rec(query, order_by, after) if after else None:
+        if after_row := await self._fetch_cursor_row(query, order_by, after) if after else None:
             after_params = ParamMap((query.ctx.new_param_id(), v) for v in after_row)
             predicate = self._format_cursor_predicate(order_by, after_params, last is None)
             filters.append(predicate)
             params.update(after_params)
-        if before_row := await self._fetch_cursor_rec(query, order_by, before) if before else None:
+        if before_row := await self._fetch_cursor_row(query, order_by, before) if before else None:
             before_params = ParamMap((query.ctx.new_param_id(), v) for v in before_row)
             predicate = self._format_cursor_predicate(order_by, before_params, last is not None)
             filters.append(predicate)
@@ -501,7 +501,7 @@ class Session:
         )
         rows = await self._backend.select(select_stmt, params)
 
-        keys_records = rows[:limit]
+        key_rows = rows[:limit]
 
         if last is None:
             has_previous_page = bool(after_row) or bool(offset)
@@ -509,13 +509,13 @@ class Session:
         else:
             has_previous_page = len(rows) > limit if limit else False
             has_next_page = bool(before_row) or bool(offset)
-            keys_records.reverse()
+            key_rows.reverse()
 
-        pks = [query.mapping.primary_key_from_record(rec) for rec in keys_records]
+        pks = [query.mapping.primary_key_from_row(row) for row in key_rows]
         cursors = [pk[0] if len(pk) == 1 else pk for pk in pks]
         return self.Page(cursors, has_previous_page, has_next_page)
 
-    async def _fetch_cursor_rec(self, query: "SessionEntityQuery", order_bys: Sequence[SQLSelect.OrderBy], cursor: Key):
+    async def _fetch_cursor_row(self, query: "SessionEntityQuery", order_bys: Sequence[SQLSelect.OrderBy], cursor: Key):
         params = ParamMap(query.params)
         filters = query.having_conds.copy()
         for f, value in zip(query.mapping.get_primary_fields(), cursor):
@@ -952,7 +952,7 @@ class AutoMappingBuilder:
         key = primary + parental
         full = key + [fn for fn in fields if fn not in key]
         insertable = [fn for fn in fields if fn in parental or fn not in skip_on_insert]
-        updatable = [fn for fn in fields if not (fn in skip_on_update or fn in key)]
+        updatable = [fn for fn in fields if not (fn in skip_on_update or fn in primary or fn in parental)]
 
         return EntityMapping(
             entity_type=entity_type,
@@ -971,14 +971,14 @@ class AutoMappingBuilder:
 
     def _build_field(self, name: str, config: FieldConfig):
         column = config["column"] if "column" in config else self._column_name(name)
-        return Field(column, DefaultFieldPropertyAccessor(name))
+        return Field(column, FieldAttributeAccessor(name))
 
     def _build_child(self, name: str, config: ChildConfig):
         target = config["target"] if isinstance(config["target"], type) else config["target"]()
         if config["kind"] == "singular":
-            return Child(target, DefaultSingularChildAccessor(name))
+            return Child(target, SingularChildAttributeAccessor(name))
         else:
-            return Child(target, DefaultPluralChildAccessor(name))
+            return Child(target, PluralChildAttributeAccessor(name))
 
     _name_patt = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
@@ -989,7 +989,7 @@ class AutoMappingBuilder:
         return self._name_patt.sub("_", s).lower()
 
 
-class DefaultFieldPropertyAccessor(typing.NamedTuple):
+class FieldAttributeAccessor(typing.NamedTuple):
     name: str
 
     def get(self, entity: Entity) -> Value:
@@ -999,7 +999,7 @@ class DefaultFieldPropertyAccessor(typing.NamedTuple):
         setattr(entity, self.name, value)
 
 
-class DefaultSingularChildAccessor(typing.NamedTuple):
+class SingularChildAttributeAccessor(typing.NamedTuple):
     name: str
 
     def get(self, entity: Entity) -> Sequence[Entity]:
@@ -1009,7 +1009,7 @@ class DefaultSingularChildAccessor(typing.NamedTuple):
         setattr(entity, self.name, next(iter(value), None))
 
 
-class DefaultPluralChildAccessor(typing.NamedTuple):
+class PluralChildAttributeAccessor(typing.NamedTuple):
     name: str
 
     def get(self, entity: Entity) -> Sequence[Entity]:
