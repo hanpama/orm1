@@ -208,7 +208,7 @@ class QueryTestCase(AutoRollbackTestCase):
         ).fetch()
 
         assert len(result) == 1
-        assert result[0]["id"] == 3
+        assert result[0][0] == 3
 
     async def test_raw_query_fetch_one(self):
         session = self.session()
