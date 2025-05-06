@@ -382,7 +382,7 @@ class Session:
         return SessionRawQuery(self, query, params)
 
     @asynccontextmanager
-    async def tx(self) -> typing.AsyncGenerator[None]:
+    async def tx(self) -> typing.AsyncGenerator[None, None]:
         await self._start_tx()
         prev_idm = self._idm.copy()
         try:
