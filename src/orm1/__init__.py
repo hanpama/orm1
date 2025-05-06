@@ -1,14 +1,14 @@
 import re
 import types
 import typing
-from typing import Collection, Sequence, Type
+from typing import Collection, Sequence, Type, Self
 from contextlib import asynccontextmanager
 
 import asyncpg
 import asyncpg.transaction
 
 Entity = object
-KeyLike = typing.Union[typing.Hashable, tuple[typing.Hashable]]
+KeyLike = typing.Union[typing.Hashable, tuple[typing.Hashable, ...]]
 Value = typing.Any
 ParamMap = dict[typing.Hashable, Value]
 TEntity = typing.TypeVar("TEntity", bound=Entity)
@@ -18,7 +18,9 @@ Record = dict[str, Value]
 class Key(tuple[typing.Hashable]):
     @classmethod
     def from_key_like(cls, key_like: KeyLike) -> "Key":
-        return cls(key_like) if isinstance(key_like, tuple) else cls((key_like,))
+        if isinstance(key_like, tuple):
+            return cls(typing.cast(tuple[typing.Hashable, ...], key_like))
+        return cls((key_like,))
 
 
 class AttributeAccessor(typing.Protocol):
@@ -197,10 +199,10 @@ Row = tuple[Value, ...]
 
 
 class SessionBackend(typing.Protocol):
-    async def select(self, stmt: SQLSelect, values: list[list[Value]]) -> list[Row]: ...
-    async def insert(self, stmt: SQLInsert, values: list[list[Value]]) -> list[Row]: ...
-    async def update(self, stmt: SQLUpdate, values: list[list[Value]]) -> list[Row]: ...
-    async def delete(self, stmt: SQLDelete, values: list[list[Value]]): ...
+    async def select(self, stmt: SQLSelect, values: list[ParamMap]) -> list[Row]: ...
+    async def insert(self, stmt: SQLInsert, values: list[ParamMap]) -> list[Row]: ...
+    async def update(self, stmt: SQLUpdate, values: list[ParamMap]) -> list[Row]: ...
+    async def delete(self, stmt: SQLDelete, values: list[ParamMap]): ...
     async def fetch_query(self, stmt: SQLQuery, param_map: ParamMap) -> list[Row]: ...
     async def count_query(self, stmt: SQLQuery, param_map: ParamMap) -> int: ...
     async def fetch_raw(self, raw: SQL, param_map: ParamMap) -> list[Row]: ...
@@ -255,7 +257,7 @@ class Session:
                 select=[f.column for f in mapping.get_fields()],
                 key_columns=key_cols,
             )
-            values = [list(key) for key in keys]
+            values = [ParamMap(zip(key_cols, key)) for key in keys]
             rows = await self._backend.select(select_stmt, values)
             records = [{f.name: val for f, val in zip(mapping.get_fields(), row)} for row in rows]
         else:
@@ -298,7 +300,7 @@ class Session:
                     where=[f.column for f in mapping.get_primary_fields()],
                 )
                 param_fields = [*updatable_fields, *mapping.get_primary_fields()]
-                values = [[f.accessor.get(e) for f in param_fields] for e in to_update]
+                values = [ParamMap({f.column: f.accessor.get(e) for f in param_fields}) for e in to_update]
                 rows = await self._backend.update(update_stmt, values)
 
                 for e, row in zip(to_update, rows):
@@ -315,7 +317,7 @@ class Session:
                     returning=[f.column for f in mapping.get_fields()],
                 )
                 param_fields = insertable_fields
-                values = [[f.accessor.get(e) for f in param_fields] for e in to_insert]
+                values = [ParamMap({f.column: f.accessor.get(e) for f in param_fields}) for e in to_insert]
                 rows = await self._backend.insert(insert_stmt, values)
 
                 for e, row in zip(to_insert, rows):
@@ -367,7 +369,7 @@ class Session:
             from_table=mapping.table,
             key_columns=[f.column for f in mapping.get_primary_fields()],
         )
-        values = [[f.accessor.get(e) for f in mapping.get_primary_fields()] for e in entities]
+        values = [ParamMap({f.column: f.accessor.get(e) for f in mapping.get_primary_fields()}) for e in entities]
         await self._backend.delete(stmt, values)
 
         for entity in entities:
@@ -376,11 +378,11 @@ class Session:
     def query(self, entity_type: Type[TEntity], alias: str) -> "SessionEntityQuery[TEntity]":
         return SessionEntityQuery[TEntity](self, self.get_mapping(entity_type), alias)
 
-    def raw(self, query: str, **params) -> "SessionRawQuery":
+    def raw(self, query: str, **params: Value) -> "SessionRawQuery":
         return SessionRawQuery(self, query, params)
 
     @asynccontextmanager
-    async def tx(self):
+    async def tx(self) -> typing.AsyncGenerator[None]:
         await self._start_tx()
         prev_idm = self._idm.copy()
         try:
@@ -391,28 +393,30 @@ class Session:
             self._idm = prev_idm
             raise
 
-    async def _start_tx(self):
+    async def _start_tx(self) -> None:
         if self._tx_depth == 0:
             await self._backend.begin()
         else:
             await self._backend.savepoint(f"tx_{self._tx_depth}")
         self._tx_depth += 1
 
-    async def _end_tx(self):
+    async def _end_tx(self) -> None:
         self._tx_depth -= 1
         if self._tx_depth == 0:
             await self._backend.commit()
         else:
             await self._backend.release(f"tx_{self._tx_depth}")
 
-    async def _rollback_tx(self):
+    async def _rollback_tx(self) -> None:
         self._tx_depth -= 1
         if self._tx_depth == 0:
             await self._backend.rollback()
         else:
             await self._backend.rollback_to(f"tx_{self._tx_depth}")
 
-    async def _fetch_session_entity_query(self, query: "SessionEntityQuery", limit: int | None, offset: int | None) -> list[Entity]:
+    async def fetch_session_entity_query(
+        self, query: "SessionEntityQuery[TEntity]", limit: int | None, offset: int | None
+    ) -> list[TEntity]:
         params = ParamMap(query.params)
         limit_ref = query.ctx.new_param_id()
         offset_ref = query.ctx.new_param_id()
@@ -432,9 +436,9 @@ class Session:
         rows = await self._backend.fetch_query(select_stmt, params)
         keys = [Key(row) for row in rows]
         entities = await self._get(query.mapping, [f.column for f in query.mapping.get_primary_fields()], keys)
-        return list(entities.values())
+        return [typing.cast(TEntity, e) for e in entities.values()]
 
-    async def _count_session_entity_query(self, query: "SessionEntityQuery"):
+    async def count_session_entity_query(self, query: "SessionEntityQuery[TEntity]") -> int:
         select_stmt = SQLQuery(
             select=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
@@ -458,7 +462,7 @@ class Session:
         has_previous_page: bool
         has_next_page: bool
 
-    async def paginate_session_entity_query(self, query: "SessionEntityQuery", opts: PageOpts):
+    async def paginate_session_entity_query(self, query: "SessionEntityQuery[TEntity]", opts: PageOpts):
         first, after, last, before, offset = opts
 
         after = Key.from_key_like(after) if after else None
@@ -516,7 +520,7 @@ class Session:
         cursors: list[KeyLike] = [row[0] if len(row) == 1 else tuple(row) for row in key_rows]
         return self.Page(cursors, has_previous_page, has_next_page)
 
-    async def _fetch_cursor_row(self, query: "SessionEntityQuery", order_bys: Sequence[SQLQuery.OrderBy], cursor: Key):
+    async def _fetch_cursor_row(self, query: "SessionEntityQuery[TEntity]", order_bys: Sequence[SQLQuery.OrderBy], cursor: Key):
         params = ParamMap(query.params)
         filters = query.having_conds.copy()
         for f, value in zip(query.mapping.get_primary_fields(), cursor):
@@ -537,7 +541,7 @@ class Session:
         return rows[0] if rows else None
 
     def _format_cursor_predicate(self, order_bys: list[SQLQuery.OrderBy], params: ParamMap, is_forward: bool):
-        param_refs = [sql_param(i) for i in params]
+        param_refs = [sql_param(id) for id in params]
         or_predicates: list[SQL] = []
         for i, _ in enumerate(order_bys):
             and_predicates: list[SQL] = []
@@ -559,7 +563,7 @@ class Session:
             or_predicates.append(sql_all(and_predicates))
         return sql_any(or_predicates)
 
-    async def fetch_raw_query(self, query: "SessionRawQuery"):
+    async def fetch_raw_query(self, query: "SessionRawQuery") -> list[Row]:
         return await self._backend.fetch_raw(query.fragment, query.params)
 
     _mappings: dict[type, EntityMapping]
@@ -569,7 +573,7 @@ class Session:
 
 
 class SQLBuildingContext:
-    def __init__(self, start_pointer=0):
+    def __init__(self, start_pointer: int = 0):
         self._param_pointer = start_pointer
 
     _patt_word = re.compile(r"('[^']*'|\"[^\"]*\"|\s+|::|:\w+|\w+|[^\w\s])")
@@ -625,7 +629,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         self.order_by_opts = tuple[SQLQuery.OrderBy, ...]()
         self.ctx = SQLBuildingContext()
 
-    def join(self, target: type | str, alias: str, on: str, **params):
+    def join(self, target: type | str, alias: str, on: str, **params: Value) -> Self:
         self.joins[alias] = SQLQuery.Join(
             type="JOIN",
             table=self._get_target(target, params),
@@ -634,7 +638,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         )
         return self
 
-    def left_join(self, target: type | str, alias: str, on: str, **params):
+    def left_join(self, target: type | str, alias: str, on: str, **params: Value) -> Self:
         self.joins[alias] = SQLQuery.Join(
             type="LEFT JOIN",
             table=self._get_target(target, params),
@@ -643,28 +647,28 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         )
         return self
 
-    def where(self, condition: str, **params):
+    def where(self, condition: str, **params: Value) -> Self:
         self.where_conds.append(self._parse(f"({condition})", params))
         return self
 
-    def having(self, condition: str, **params):
+    def having(self, condition: str, **params: Value) -> Self:
         self.having_conds.append(self._parse(f"({condition})", params))
         return self
 
-    def order_by(self, *order_by: SQLQuery.OrderBy):
+    def order_by(self, *order_by: SQLQuery.OrderBy) -> Self:
         self.order_by_opts = order_by
         return self
 
-    async def fetch(self, limit: int | None = None, offset: int | None = None):
-        entities = await self._session._fetch_session_entity_query(self, limit, offset)
-        return typing.cast(list[TEntity], entities)
+    async def fetch(self, limit: int | None = None, offset: int | None = None) -> list[TEntity]:
+        return await self._session.fetch_session_entity_query(self, limit, offset)
+        # return typing.cast(list[TEntity], entities)
 
-    async def fetch_one(self):
+    async def fetch_one(self) -> TEntity | None:
         results = await self.fetch(limit=1, offset=0)
         return results[0] if results else None
 
-    async def count(self):
-        return await self._session._count_session_entity_query(self)
+    async def count(self) -> int:
+        return await self._session.count_session_entity_query(self)
 
     async def paginate(
         self,
@@ -673,25 +677,25 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         last: int | None = None,
         before: KeyLike | None = None,
         offset: int | None = None,
-    ):
+    ) -> Session.Page:
         opts = Session.PageOpts(first, after, last, before, offset)
         return await self._session.paginate_session_entity_query(self, opts)
 
-    def asc(self, expr: str, nulls_last=True, **params):
+    def asc(self, expr: str, nulls_last: bool = True, **params: Value) -> SQLQuery.OrderBy:
         return SQLQuery.OrderBy(self._parse(expr, params), True, nulls_last)
 
-    def desc(self, expr: str, nulls_last=True, **params):
+    def desc(self, expr: str, nulls_last: bool = True, **params: Value) -> SQLQuery.OrderBy:
         return SQLQuery.OrderBy(self._parse(expr, params), False, nulls_last)
 
-    def _get_target(self, target: type | str, params: dict):
+    def _get_target(self, target: type | str, params: dict[str, Value]):
         if isinstance(target, str):
             return self._parse(target, params)
         target_mapping = self._session.get_mapping(target)
         return sql_qn(target_mapping.schema, target_mapping.table)
 
-    def _parse(self, sql: str, params: dict):
-        fragment, params = self.ctx.parse(sql, params)
-        self.params.update(params)
+    def _parse(self, sql: str, params: dict[str, Value]):
+        fragment, param_map = self.ctx.parse(sql, params)
+        self.params.update(param_map)
         return fragment
 
 
@@ -714,37 +718,37 @@ class AsyncPGSessionBackend(SessionBackend):
         self._active: asyncpg.Pool | asyncpg.Connection = pool
         self._tx: asyncpg.transaction.Transaction | None = None
 
-    async def select(self, stmt: SQLSelect, values: list[list[Value]]):
-        query = self.Renderer().render_select(stmt)
-        return await self._active.fetchmany(query, values)
+    async def select(self, stmt: SQLSelect, values: list[ParamMap]) -> list[Row]:
+        query, param_lists = self.Renderer().render_select(stmt, values)
+        return await self._active.fetchmany(query, param_lists)
 
-    async def insert(self, stmt: SQLInsert, values: list[list[Value]]):
-        query = self.Renderer().render_insert(stmt)
-        return await self._active.fetchmany(query, values)
+    async def insert(self, stmt: SQLInsert, values: list[ParamMap]) -> list[Row]:
+        query, param_lists = self.Renderer().render_insert(stmt, values)
+        return await self._active.fetchmany(query, param_lists)
 
-    async def update(self, stmt: SQLUpdate, values: list[list[Value]]):
-        query = self.Renderer().render_update(stmt)
-        return await self._active.fetchmany(query, values)
+    async def update(self, stmt: SQLUpdate, values: list[ParamMap]) -> list[Row]:
+        query, param_lists = self.Renderer().render_update(stmt, values)
+        return await self._active.fetchmany(query, param_lists)
 
-    async def delete(self, stmt: SQLDelete, values: list[list[Value]]):
-        query = self.Renderer().render_delete(stmt)
-        return await self._active.fetchmany(query, values)
+    async def delete(self, stmt: SQLDelete, values: list[ParamMap]) -> None:
+        query, param_lists = self.Renderer().render_delete(stmt, values)
+        await self._active.fetchmany(query, param_lists)
 
-    async def fetch_query(self, stmt: SQLQuery, param_map: ParamMap):
+    async def fetch_query(self, stmt: SQLQuery, param_map: ParamMap) -> list[Row]:
         query, param_list = self.Renderer().render_query(stmt, param_map)
         rows = await self._active.fetch(query, *param_list)
         return [tuple(row) for row in rows]
 
-    async def count_query(self, stmt: SQLQuery, param_map: ParamMap):
+    async def count_query(self, stmt: SQLQuery, param_map: ParamMap) -> int:
         query, param_list = self.Renderer().render_count(stmt, param_map)
         rows = await self._active.fetch(query, *param_list)
         return rows[0][0]
 
-    async def fetch_raw(self, raw: SQL, param_map: ParamMap):
+    async def fetch_raw(self, raw: SQL, param_map: ParamMap) -> list[Row]:
         query, param_list = self.Renderer().render_raw(raw, param_map)
         return await self._active.fetch(query, *param_list)
 
-    async def begin(self):
+    async def begin(self) -> None:
         assert not self._tx
         conn: asyncpg.Connection = await self._pool.acquire()
         tx: asyncpg.transaction.Transaction = conn.transaction()
@@ -752,7 +756,7 @@ class AsyncPGSessionBackend(SessionBackend):
         self._active = conn
         self._tx = tx
 
-    async def commit(self):
+    async def commit(self) -> None:
         assert self._tx
         try:
             await self._tx.commit()
@@ -761,7 +765,7 @@ class AsyncPGSessionBackend(SessionBackend):
             self._active = self._pool
             self._tx = None
 
-    async def rollback(self):
+    async def rollback(self) -> None:
         assert self._tx
         try:
             await self._tx.rollback()
@@ -770,60 +774,63 @@ class AsyncPGSessionBackend(SessionBackend):
             self._active = self._pool
             self._tx = None
 
-    async def savepoint(self, name: str):
+    async def savepoint(self, name: str) -> None:
         await self._active.execute(f"SAVEPOINT {name}")
 
-    async def release(self, name: str):
+    async def release(self, name: str) -> None:
         await self._active.execute(f"RELEASE SAVEPOINT {name}")
 
-    async def rollback_to(self, name: str):
+    async def rollback_to(self, name: str) -> None:
         await self._active.execute(f"ROLLBACK TO SAVEPOINT {name}")
 
     class Renderer:
         def __init__(self):
             self._ctx = SQLRenderingContext()
 
-        def render_select(self, stmt: SQLSelect):
+        def render_select(self, stmt: SQLSelect, param_maps: list[ParamMap]):
             parts = ["SELECT"]
-            parts.append(", ".join(self._el(sql_n(n)) for n in stmt.select))
+            parts.append(", ".join(self._el(sql_n(c)) for c in stmt.select))
             parts.append(f"FROM {self._el(sql_qn(stmt.from_schema, stmt.from_table))}")
-            parts.append(f"WHERE {' AND '.join([f'{self._el(sql_n(n))} = {self._el(sql_param(n))}' for n in stmt.key_columns])}")
+            parts.append(f"WHERE {' AND '.join([f'{self._el(sql_n(c))} = {self._el(sql_param(c))}' for c in stmt.key_columns])}")
             query = " ".join(parts)
-            return query
+            param_lists = [[param_map[id] for id in self._ctx.get_param_keys()] for param_map in param_maps]
+            return query, param_lists
 
-        def render_insert(self, stmt: SQLInsert):
+        def render_insert(self, stmt: SQLInsert, param_maps: list[ParamMap]):
             parts = ["INSERT INTO", self._el(sql_qn(stmt.into_schema, stmt.into_table))]
-            parts.append(f"({', '.join(self._el(sql_n(i)) for i in stmt.insert)})")
-            parts.append(f"VALUES ({', '.join(self._el(sql_param(i)) for i in range(len(stmt.insert)))})")
-            parts.append(f"RETURNING {', '.join(self._el(sql_n(i)) for i in stmt.returning)}")
+            parts.append(f"({', '.join(self._el(sql_n(c)) for c in stmt.insert)})")
+            parts.append(f"VALUES ({', '.join(self._el(sql_param(c)) for c in stmt.insert)})")
+            parts.append(f"RETURNING {', '.join(self._el(sql_n(c)) for c in stmt.returning)}")
             query = " ".join(parts)
+            param_lists = [[param_map[id] for id in self._ctx.get_param_keys()] for param_map in param_maps]
+            return query, param_lists
 
-            return query
-
-        def render_update(self, stmt: SQLUpdate):
+        def render_update(self, stmt: SQLUpdate, param_maps: list[ParamMap]):
             parts = ["UPDATE", self._el(sql_qn(stmt.schema, stmt.table))]
-            parts.append(f"SET {', '.join(f'{self._el(sql_n(k))} = {self._el(sql_param(k))}' for k in stmt.sets)}")
-            parts.append(f"WHERE {' AND '.join([f'{self._el(sql_n(n))} = {self._el(sql_param(n))}' for n in stmt.where])}")
-            parts.append(f"RETURNING {', '.join(self._el(sql_n(i)) for i in stmt.returning)}")
+            parts.append(f"SET {', '.join(f'{self._el(sql_n(c))} = {self._el(sql_param(c))}' for c in stmt.sets)}")
+            parts.append(f"WHERE {' AND '.join([f'{self._el(sql_n(c))} = {self._el(sql_param(c))}' for c in stmt.where])}")
+            parts.append(f"RETURNING {', '.join(self._el(sql_n(c)) for c in stmt.returning)}")
             query = " ".join(parts)
-            return query
+            param_lists = [[param_map[id] for id in self._ctx.get_param_keys()] for param_map in param_maps]
+            return query, param_lists
 
-        def render_delete(self, stmt: SQLDelete):
+        def render_delete(self, stmt: SQLDelete, param_maps: list[ParamMap]):
             parts = ["DELETE FROM", self._el(sql_qn(stmt.from_schema, stmt.from_table))]
-            parts.append(f"WHERE {' AND '.join([f'{self._el(sql_n(n))} = {self._el(sql_param(n))}' for n in stmt.key_columns])}")
+            parts.append(f"WHERE {' AND '.join([f'{self._el(sql_n(c))} = {self._el(sql_param(c))}' for c in stmt.key_columns])}")
             query = " ".join(parts)
-            return query
+            param_lists = [[param_map[id] for id in self._ctx.get_param_keys()] for param_map in param_maps]
+            return query, param_lists
 
         def render_query(self, stmt: SQLQuery, param_map: ParamMap):
             parts = ["SELECT"]
-            parts.append(", ".join(self._el(i) for i in stmt.select))
+            parts.append(", ".join(self._el(c) for c in stmt.select))
             parts.append(f"FROM {self._el(stmt.from_table)} AS {self._el(stmt.from_alias)}")
             for join in stmt.joins:
                 parts.append(self._sql_join_opt(join))
             if stmt.where:
                 parts.append(f"WHERE {self._el(stmt.where)}")
             if stmt.group_by:
-                parts.append(f"GROUP BY {', '.join(self._el(i) for i in stmt.group_by)}")
+                parts.append(f"GROUP BY {', '.join(self._el(c) for c in stmt.group_by)}")
             if stmt.having:
                 parts.append(f"HAVING {self._el(stmt.having)}")
             if stmt.order_bys:
@@ -854,7 +861,7 @@ class AsyncPGSessionBackend(SessionBackend):
             nulls = "NULLS LAST" if opt.nulls_last else "NULLS FIRST"
             return f"{self._el(opt.expr)} {direction} {nulls}"
 
-        def _el(self, el: SQL):
+        def _el(self, el: SQL) -> str:
             match el:
                 case sql_n(part1):
                     return f'"{part1.replace(".", '"."')}"'
@@ -905,11 +912,11 @@ class AutoMappingBuilder:
         self._configs = dict[type, self.EntityMappingConfig]()
         self._mappings = dict[type, EntityMapping]()
 
-    def map(self, entity_type: type[TEntity], **kwargs: typing.Unpack[EntityMappingConfig]):
+    def map(self, entity_type: type[TEntity], **kwargs: typing.Unpack[EntityMappingConfig]) -> type[TEntity]:
         self._configs[entity_type] = kwargs
         return entity_type
 
-    def mapped(self, **kwargs: typing.Unpack[EntityMappingConfig]):
+    def mapped(self, **kwargs: typing.Unpack[EntityMappingConfig]) -> typing.Callable[[type[TEntity]], type[TEntity]]:
         return lambda entity_type: self.map(entity_type, **kwargs)
 
     def build(self):
@@ -1027,8 +1034,8 @@ class PluralChildAttributeAccessor(typing.NamedTuple):
 class DefaultEntityFactory(typing.NamedTuple):
     entity_type: type
 
-    def create(self):
-        return object.__new__(self.entity_type)
+    def create(self) -> Entity:
+        return typing.cast(Entity, object.__new__(self.entity_type))
 
 
 auto = AutoMappingBuilder()
