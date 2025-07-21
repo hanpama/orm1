@@ -159,6 +159,7 @@ class QueryTestCase(AutoRollbackTestCase):
         query.join(BlogPostComment, "bpc", "bp.id = bpc.blog_post_id")
         query.left_join("test_query.blog_post_tag", "bpt", "bp.id = bpt.blog_post_id")
         query.where("bpt.tag IS NULL")
+        query.group_by("bp.id")
         query.having("every(bpc.rating <= 3)")
         result = await query.fetch()
 
