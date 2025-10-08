@@ -427,7 +427,7 @@ class Session:
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
             where=sql_all(query.where_conds) if query.where_conds else None,
-            group_by=[sql_qn(query.alias, c.column) for c in query.mapping.get_primary_fields()],
+            group_by=query.group_by_exprs if query.group_by_exprs else (),
             having=sql_all(query.having_conds) if query.having_conds else None,
             order_bys=query.order_by_opts,
             limit=sql_param(limit_ref),
@@ -445,7 +445,7 @@ class Session:
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
             where=sql_all(query.where_conds) if query.where_conds else None,
-            group_by=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
+            group_by=query.group_by_exprs if query.group_by_exprs else (),
             having=sql_all(query.having_conds) if query.having_conds else None,
         )
         return await self._backend.count_query(select_stmt, query.params)
@@ -475,18 +475,30 @@ class Session:
             order_by = [SQLQuery.OrderBy(o.expr, not o.ascending, not o.nulls_last) for o in order_by]
 
         params = ParamMap(query.params)
-        filters = query.having_conds.copy()
 
+        cursor_filters = []
         if after_row := await self._fetch_cursor_row(query, order_by, after) if after else None:
             after_params = ParamMap((query.ctx.new_param_id(), v) for v in after_row)
             predicate = self._format_cursor_predicate(order_by, after_params, last is None)
-            filters.append(predicate)
+            cursor_filters.append(predicate)
             params.update(after_params)
         if before_row := await self._fetch_cursor_row(query, order_by, before) if before else None:
             before_params = ParamMap((query.ctx.new_param_id(), v) for v in before_row)
             predicate = self._format_cursor_predicate(order_by, before_params, last is not None)
-            filters.append(predicate)
+            cursor_filters.append(predicate)
             params.update(before_params)
+
+        if query.group_by_exprs:
+            having_filters = query.having_conds.copy()
+            where_filters = query.where_conds
+        else:
+            having_filters = query.having_conds
+            where_filters = query.where_conds.copy()
+
+        if query.group_by_exprs:
+            having_filters.extend(cursor_filters)
+        else:
+            where_filters.extend(cursor_filters)
 
         limit = first if last is None else last
         limit_ref = query.ctx.new_param_id()
@@ -499,9 +511,9 @@ class Session:
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
-            where=sql_all(query.where_conds) if query.where_conds else None,
-            group_by=[sql_qn(query.alias, f.column) for f in record_fields],
-            having=sql_all(filters) if filters else None,
+            where=sql_all(where_filters) if where_filters else None,
+            group_by=query.group_by_exprs if query.group_by_exprs else (),
+            having=sql_all(having_filters) if having_filters else None,
             order_bys=order_by,
             limit=sql_param(limit_ref),
             offset=sql_param(offset_ref),
@@ -522,20 +534,30 @@ class Session:
 
     async def _fetch_cursor_row(self, query: "SessionEntityQuery[TEntity]", order_bys: Sequence[SQLQuery.OrderBy], cursor: Key):
         params = ParamMap(query.params)
-        filters = query.having_conds.copy()
+
+        pk_filters = []
         for f, value in zip(query.mapping.get_primary_fields(), cursor):
             param_id = query.ctx.new_param_id()
             params[param_id] = value
-            filters.append(sql_eq(sql_qn(query.alias, f.column), sql_param(param_id)))
+            pk_filters.append(sql_eq(sql_qn(query.alias, f.column), sql_param(param_id)))
+
+        if query.group_by_exprs:
+            where_filters = query.where_conds
+            having_filters = query.having_conds.copy()
+            having_filters.extend(pk_filters)
+        else:
+            where_filters = query.where_conds.copy()
+            where_filters.extend(pk_filters)
+            having_filters = query.having_conds
 
         sql_query = SQLQuery(
             select=[o.expr for o in order_bys],
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
-            where=sql_all(query.where_conds) if query.where_conds else None,
-            group_by=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
-            having=sql_all(filters),
+            where=sql_all(where_filters) if where_filters else None,
+            group_by=query.group_by_exprs if query.group_by_exprs else (),
+            having=sql_all(having_filters) if having_filters else None,
         )
         rows = await self._backend.fetch_query(sql_query, params)
         return rows[0] if rows else None
@@ -627,6 +649,7 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         self.where_conds = list[SQL]()
         self.having_conds = list[SQL]()
         self.order_by_opts = tuple[SQLQuery.OrderBy, ...]()
+        self.group_by_exprs = list[SQL]()
         self.ctx = SQLBuildingContext()
 
     def join(self, target: type | str, alias: str, on: str, **params: Value) -> Self:
@@ -653,6 +676,10 @@ class SessionEntityQuery(typing.Generic[TEntity]):
 
     def having(self, condition: str, **params: Value) -> Self:
         self.having_conds.append(self._parse(f"({condition})", params))
+        return self
+
+    def group_by_primary_key(self) -> Self:
+        self.group_by_exprs.extend(sql_qn(self.alias, f.column) for f in self.mapping.get_primary_fields())
         return self
 
     def order_by(self, *order_by: SQLQuery.OrderBy) -> Self:
