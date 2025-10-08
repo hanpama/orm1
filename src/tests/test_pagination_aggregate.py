@@ -114,7 +114,7 @@ class PaginationTest(base.AutoRollbackTestCase):
 
         q = session.query(BlogPost, "bp")
         q.left_join(BlogPostComment, "bpc", "bp.id = bpc.blog_post_id")
-        q.group_by("bp.id")
+        q.group_by_primary_key()
         q.order_by(q.asc("max(bpc.created_at)"))
 
         page = await q.paginate(first=2)
@@ -140,7 +140,7 @@ class PaginationTest(base.AutoRollbackTestCase):
 
         q = session.query(BlogPost, "bp")
         q.left_join(BlogPostComment, "bpc", "bp.id = bpc.blog_post_id")
-        q.group_by("bp.id")
+        q.group_by_primary_key()
         q.order_by(q.asc("max(bpc.created_at)"))
 
         page = await q.paginate(last=2)
@@ -166,7 +166,7 @@ class PaginationTest(base.AutoRollbackTestCase):
 
         q = session.query(BlogPost, "bp")
         q.left_join(BlogPostComment, "bpc", "bp.id = bpc.blog_post_id")
-        q.group_by("bp.id")
+        q.group_by_primary_key()
         q.order_by(q.asc("max(bpc.created_at)", nulls_last=False))
 
         page = await q.paginate(first=2)
@@ -192,7 +192,7 @@ class PaginationTest(base.AutoRollbackTestCase):
 
         q = session.query(BlogPost, "bp")
         q.left_join(BlogPostComment, "bpc", "bp.id = bpc.blog_post_id")
-        q.group_by("bp.id")
+        q.group_by_primary_key()
         q.order_by(q.asc("max(bpc.created_at)", nulls_last=False))
 
         page = await q.paginate(last=2)

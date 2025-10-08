@@ -678,9 +678,8 @@ class SessionEntityQuery(typing.Generic[TEntity]):
         self.having_conds.append(self._parse(f"({condition})", params))
         return self
 
-    def group_by(self, *expressions: str, **params: Value) -> Self:
-        for expr in expressions:
-            self.group_by_exprs.append(self._parse(expr, params))
+    def group_by_primary_key(self) -> Self:
+        self.group_by_exprs.extend(sql_qn(self.alias, f.column) for f in self.mapping.get_primary_fields())
         return self
 
     def order_by(self, *order_by: SQLQuery.OrderBy) -> Self:
