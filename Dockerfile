@@ -5,7 +5,7 @@ ENV LANG=en_US.utf8
 
 WORKDIR /usr/app
 
-RUN apt-get update -y && apt-get install -y fswatch && apt-get clean
+RUN apt-get update -y && apt-get install -y fswatch libatomic1 && apt-get clean
 RUN pip install --no-cache-dir coverage pyright && pyright --version
 
 ADD . /usr/app
