@@ -249,20 +249,8 @@ class Session:
         if to_delete := [e for e in entities if self._idm.in_track(mapping.identify_entity(e))]:
             await self._delete(mapping, to_delete)
 
-    async def _get(self, mapping: EntityMapping, key_cols: list[str], keys: list[Key]) -> dict[Key, Entity]:
-        if keys:
-            select_stmt = SQLSelect(
-                from_schema=mapping.schema,
-                from_table=mapping.table,
-                select=[f.column for f in mapping.get_fields()],
-                key_columns=key_cols,
-            )
-            values = [ParamMap(zip(key_cols, key)) for key in keys]
-            rows = await self._backend.select(select_stmt, values)
-            records = [{f.name: val for f, val in zip(mapping.get_fields(), row)} for row in rows]
-        else:
-            records = []
-
+    def _materialize_entities_from_records(self, mapping: EntityMapping, records: list[Record]) -> dict[Key, Entity]:
+        """Convert database records to entities using Identity Map."""
         ent_map: dict[Key, Entity] = {}
         for rec in records:
             eid = mapping.identify_record(rec)
@@ -270,7 +258,15 @@ class Session:
             mapping.write_to_entity(entity, rec)
             self._idm.track(eid, entity)
             ent_map[eid.primary_key] = entity
+        return ent_map
 
+    def _materialize_entities_from_rows(self, mapping: EntityMapping, rows: list[Row]) -> dict[Key, Entity]:
+        """Convert database rows to entities using Identity Map."""
+        records = [{f.name: val for f, val in zip(mapping.get_fields(), row)} for row in rows]
+        return self._materialize_entities_from_records(mapping, records)
+
+    async def _load_children(self, mapping: EntityMapping, ent_map: dict[Key, Entity]) -> None:
+        """Load child entities for parent entities (cascade loading)."""
         for child in mapping.children.values():
             child_mapping = self.get_mapping(child.target)
             child_ent_map = await self._get(
@@ -287,6 +283,21 @@ class Session:
             for primary_key, entity in ent_map.items():
                 child.accessor.set(entity, child_groups.get(primary_key, ()))
 
+    async def _get(self, mapping: EntityMapping, key_cols: list[str], keys: list[Key]) -> dict[Key, Entity]:
+        if keys:
+            select_stmt = SQLSelect(
+                from_schema=mapping.schema,
+                from_table=mapping.table,
+                select=[f.column for f in mapping.get_fields()],
+                key_columns=key_cols,
+            )
+            values = [ParamMap(zip(key_cols, key)) for key in keys]
+            rows = await self._backend.select(select_stmt, values)
+            ent_map = self._materialize_entities_from_rows(mapping, rows)
+        else:
+            ent_map = {}
+
+        await self._load_children(mapping, ent_map)
         return ent_map
 
     async def _save(self, mapping: EntityMapping, entities: list[Entity]) -> None:
@@ -422,7 +433,7 @@ class Session:
         offset_ref = query.ctx.new_param_id()
         params.update({limit_ref: limit, offset_ref: offset})
         select_stmt = SQLQuery(
-            select=[sql_qn(query.alias, f.column) for f in query.mapping.get_primary_fields()],
+            select=[sql_qn(query.alias, f.column) for f in query.mapping.get_fields()],
             from_table=sql_qn(query.mapping.schema, query.mapping.table),
             from_alias=sql_n(query.alias),
             joins=query.joins.values(),
@@ -434,9 +445,9 @@ class Session:
             offset=sql_param(offset_ref),
         )
         rows = await self._backend.fetch_query(select_stmt, params)
-        keys = [Key(row) for row in rows]
-        entities = await self._get(query.mapping, [f.column for f in query.mapping.get_primary_fields()], keys)
-        return [typing.cast(TEntity, e) for e in entities.values()]
+        ent_map = self._materialize_entities_from_rows(query.mapping, rows)
+        await self._load_children(query.mapping, ent_map)
+        return [typing.cast(TEntity, e) for e in ent_map.values()]
 
     async def count_session_entity_query(self, query: "SessionEntityQuery[TEntity]") -> int:
         select_stmt = SQLQuery(
