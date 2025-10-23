@@ -639,17 +639,6 @@ class SQLBuildingContext:
         return param_id
 
 
-class SQLRenderingContext:
-    def __init__(self):
-        self._param_locs = dict[typing.Hashable, int]()
-
-    def locate_param(self, id: typing.Hashable):
-        return self._param_locs.setdefault(id, len(self._param_locs))
-
-    def get_param_keys(self):
-        return list(self._param_locs.keys())
-
-
 class SessionEntityQuery(typing.Generic[TEntity]):
     def __init__(self, session: Session, mapping: EntityMapping, alias: str):
         self._session = session
@@ -823,7 +812,13 @@ class AsyncPGSessionBackend(SessionBackend):
 
     class Renderer:
         def __init__(self):
-            self._ctx = SQLRenderingContext()
+            self._param_locs = dict[typing.Hashable, int]()
+
+        def _locate_param(self, id: typing.Hashable) -> int:
+            return self._param_locs.setdefault(id, len(self._param_locs))
+
+        def _get_param_keys(self) -> list[typing.Hashable]:
+            return list(self._param_locs.keys())
 
         def render_select(self, stmt: SQLSelect, param_maps: list[ParamMap]):
             parts = ["SELECT"]
@@ -831,7 +826,7 @@ class AsyncPGSessionBackend(SessionBackend):
             parts.append(f"FROM {self._el(sql_qn(stmt.from_schema, stmt.from_table))}")
             parts.append(f"WHERE {' AND '.join([f'{self._el(sql_n(c))} = {self._el(sql_param(c))}' for c in stmt.key_columns])}")
             query = " ".join(parts)
-            param_lists = [[param_map[id] for id in self._ctx.get_param_keys()] for param_map in param_maps]
+            param_lists = [[param_map[id] for id in self._get_param_keys()] for param_map in param_maps]
             return query, param_lists
 
         def render_insert(self, stmt: SQLInsert, param_maps: list[ParamMap]):
@@ -840,7 +835,7 @@ class AsyncPGSessionBackend(SessionBackend):
             parts.append(f"VALUES ({', '.join(self._el(sql_param(c)) for c in stmt.insert)})")
             parts.append(f"RETURNING {', '.join(self._el(sql_n(c)) for c in stmt.returning)}")
             query = " ".join(parts)
-            param_lists = [[param_map[id] for id in self._ctx.get_param_keys()] for param_map in param_maps]
+            param_lists = [[param_map[id] for id in self._get_param_keys()] for param_map in param_maps]
             return query, param_lists
 
         def render_update(self, stmt: SQLUpdate, param_maps: list[ParamMap]):
@@ -849,14 +844,14 @@ class AsyncPGSessionBackend(SessionBackend):
             parts.append(f"WHERE {' AND '.join([f'{self._el(sql_n(c))} = {self._el(sql_param(c))}' for c in stmt.where])}")
             parts.append(f"RETURNING {', '.join(self._el(sql_n(c)) for c in stmt.returning)}")
             query = " ".join(parts)
-            param_lists = [[param_map[id] for id in self._ctx.get_param_keys()] for param_map in param_maps]
+            param_lists = [[param_map[id] for id in self._get_param_keys()] for param_map in param_maps]
             return query, param_lists
 
         def render_delete(self, stmt: SQLDelete, param_maps: list[ParamMap]):
             parts = ["DELETE FROM", self._el(sql_qn(stmt.from_schema, stmt.from_table))]
             parts.append(f"WHERE {' AND '.join([f'{self._el(sql_n(c))} = {self._el(sql_param(c))}' for c in stmt.key_columns])}")
             query = " ".join(parts)
-            param_lists = [[param_map[id] for id in self._ctx.get_param_keys()] for param_map in param_maps]
+            param_lists = [[param_map[id] for id in self._get_param_keys()] for param_map in param_maps]
             return query, param_lists
 
         def render_query(self, stmt: SQLQuery, param_map: ParamMap):
@@ -878,7 +873,7 @@ class AsyncPGSessionBackend(SessionBackend):
             if stmt.offset:
                 parts.append(f"OFFSET {self._el(stmt.offset)}")
             query = " ".join(parts)
-            params = [param_map[id] for id in self._ctx.get_param_keys()]
+            params = [param_map[id] for id in self._get_param_keys()]
 
             return query, params
 
@@ -888,7 +883,7 @@ class AsyncPGSessionBackend(SessionBackend):
 
         def render_raw(self, raw: SQL, param_map: ParamMap):
             query = self._el(raw)
-            params = [param_map[id] for id in self._ctx.get_param_keys()]
+            params = [param_map[id] for id in self._get_param_keys()]
             return query, params
 
         def _sql_join_opt(self, opt: SQLQuery.Join):
@@ -902,13 +897,16 @@ class AsyncPGSessionBackend(SessionBackend):
         def _el(self, el: SQL) -> str:
             match el:
                 case sql_n(part1):
-                    return f'"{part1.replace(".", '"."')}"'
+                    escaped = part1.replace('"', '""')
+                    return f'"{escaped}"'
                 case sql_qn(part1, part2):
-                    return f'"{part1.replace(".", '"."')}"."{part2.replace('"', '""')}"'
+                    escaped1 = part1.replace('"', '""')
+                    escaped2 = part2.replace('"', '""')
+                    return f'"{escaped1}"."{escaped2}"'
                 case sql_text(text):
                     return text
                 case sql_param(id):
-                    return f"${self._ctx.locate_param(id) + 1}"
+                    return f"${self._locate_param(id) + 1}"
                 case sql_all(els):
                     return f"({' AND '.join(self._el(e) for e in els)})"
                 case sql_any(els):
