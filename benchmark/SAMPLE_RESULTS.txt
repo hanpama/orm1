@@ -1,0 +1,150 @@
+Running benchmarks...
+
+============================================================================================================================================
+TIME RANKINGS
+============================================================================================================================================
+
+Test                           | 1st Place          | 2nd Place          | 3rd Place          | 4th Place          | 5th Place          | 6th Place         
+--------------------------------------------------------------------------------------------------------------------------------------------
+Simple_Insert                  | Raw (327.1μs)      | ORM1 (337.0μs)     | Ent (338.6μs)      | Bun (344.0μs)      | Sqlx (557.6μs)     | GORM (874.8μs)    
+Simple_Select                  | Raw (291.1μs)      | ORM1 (294.7μs)     | Ent (306.3μs)      | GORM (309.2μs)     | Bun (310.2μs)      | Sqlx (584.7μs)    
+Simple_Update                  | ORM1 (625.1μs)     | Bun (649.4μs)      | Raw (663.2μs)      | GORM (1.0ms)       | Sqlx (1.0ms)       | Ent (1.2ms)       
+Simple_BatchSelect             | Raw (462.9μs)      | ORM1 (496.9μs)     | Ent (498.5μs)      | Bun (527.7μs)      | GORM (565.7μs)     | Sqlx (731.0μs)    
+Simple_ReadSlice               | Raw (364.4μs)      | ORM1 (405.7μs)     | Ent (409.0μs)      | Bun (465.1μs)      | GORM (473.0μs)     | Sqlx (692.5μs)    
+Simple_Delete                  | Ent (350.2μs)      | Raw (383.4μs)      | ORM1 (388.6μs)     | Bun (400.0μs)      | Sqlx (568.4μs)     | GORM (821.1μs)    
+Aggregate_Insert               | Raw (1.3ms)        | ORM1 (1.5ms)       | Ent (1.5ms)        | GORM (1.6ms)       | Sqlx (2.0ms)      
+Aggregate_Select               | Raw (869.5μs)      | ORM1 (870.4μs)     | Ent (917.9μs)      | Bun (924.7μs)      | GORM (944.9μs)     | Sqlx (1.7ms)      
+Aggregate_Update               | Raw (1.7ms)        | ORM1 (2.0ms)       | Ent (2.2ms)        | GORM (2.3ms)       | Sqlx (2.7ms)      
+Aggregate_BatchSelect          | Raw (985.1μs)      | Ent (1.0ms)        | Bun (1.1ms)        | ORM1 (1.1ms)       | GORM (1.1ms)       | Sqlx (1.8ms)      
+Aggregate_ReadSlice            | Raw (1.4ms)        | ORM1 (1.6ms)       | Ent (1.8ms)        | Bun (2.3ms)        | Sqlx (2.5ms)       | GORM (3.6ms)      
+Aggregate_Delete               | ORM1 (802.4μs)     | Ent (1.1ms)        | Raw (1.2ms)        | GORM (1.3ms)       | Sqlx (1.9ms)      
+
+
+============================================================================================================================================
+MEMORY RANKINGS
+============================================================================================================================================
+
+Test                           | 1st Place          | 2nd Place          | 3rd Place          | 4th Place          | 5th Place          | 6th Place         
+--------------------------------------------------------------------------------------------------------------------------------------------
+Simple_Insert                  | Raw (304.0B)       | Sqlx (488.0B)      | Ent (2.6KB)        | ORM1 (2.8KB)       | Bun (5.0KB)        | GORM (6.8KB)      
+Simple_Select                  | Raw (1.0KB)        | Sqlx (1.2KB)       | ORM1 (2.9KB)       | Ent (3.9KB)        | GORM (5.2KB)       | Bun (5.3KB)       
+Simple_Update                  | Raw (1.2KB)        | Sqlx (1.5KB)       | ORM1 (3.8KB)       | Ent (8.5KB)        | Bun (10.0KB)       | GORM (13.1KB)     
+Simple_BatchSelect             | Bun (35.3KB)       | Sqlx (36.9KB)      | Raw (44.8KB)       | ORM1 (53.8KB)      | Ent (65.1KB)       | GORM (66.8KB)     
+Simple_ReadSlice               | Raw (10.3KB)       | ORM1 (23.4KB)      | Bun (28.1KB)       | Sqlx (28.6KB)      | Ent (35.8KB)       | GORM (36.9KB)     
+Simple_Delete                  | Raw (207.0B)       | Sqlx (288.0B)      | ORM1 (367.0B)      | Ent (1.8KB)        | Bun (4.6KB)        | GORM (5.5KB)      
+Aggregate_Insert               | Sqlx (3.0KB)       | Raw (3.9KB)        | ORM1 (9.4KB)       | Ent (18.0KB)       | GORM (29.4KB)     
+Aggregate_Select               | Raw (3.4KB)        | Sqlx (4.5KB)       | ORM1 (6.7KB)       | Ent (13.6KB)       | Bun (19.0KB)       | GORM (22.2KB)     
+Aggregate_Update               | Sqlx (4.8KB)       | Raw (5.2KB)        | ORM1 (13.9KB)      | Ent (31.8KB)       | GORM (57.0KB)     
+Aggregate_BatchSelect          | Raw (10.3KB)       | Sqlx (17.7KB)      | ORM1 (33.2KB)      | Bun (34.3KB)       | Ent (38.0KB)       | GORM (52.1KB)     
+Aggregate_ReadSlice            | Raw (81.8KB)       | Sqlx (134.6KB)     | Bun (177.6KB)      | ORM1 (185.0KB)     | Ent (280.7KB)      | GORM (369.3KB)    
+Aggregate_Delete               | ORM1 (878.0B)      | Raw (1.1KB)        | Sqlx (1.3KB)       | Ent (10.7KB)       | GORM (17.4KB)     
+
+
+============================================================================================================================================
+ALLOCATIONS RANKINGS
+============================================================================================================================================
+
+Test                           | 1st Place          | 2nd Place          | 3rd Place          | 4th Place          | 5th Place          | 6th Place         
+--------------------------------------------------------------------------------------------------------------------------------------------
+Simple_Insert                  | Raw (5)            | Sqlx (10)          | Bun (13)           | ORM1 (31)          | Ent (67)           | GORM (87)         
+Simple_Select                  | Bun (19)           | Raw (28)           | Sqlx (30)          | ORM1 (44)          | GORM (79)          | Ent (101)         
+Simple_Update                  | Bun (24)           | Raw (33)           | Sqlx (38)          | ORM1 (59)          | GORM (165)         | Ent (220)         
+Simple_BatchSelect             | Bun (531)          | Raw (542)          | Sqlx (643)         | ORM1 (866)         | Ent (1226)         | GORM (1289)       
+Simple_ReadSlice               | Bun (524)          | ORM1 (567)         | Sqlx (633)         | Raw (721)          | GORM (1069)        | Ent (1099)        
+Simple_Delete                  | Bun (5)            | Raw (6)            | Sqlx (7)           | ORM1 (10)          | Ent (41)           | GORM (63)         
+Aggregate_Insert               | Sqlx (66)          | Raw (109)          | ORM1 (196)         | GORM (385)         | Ent (423)         
+Aggregate_Select               | Raw (104)          | Sqlx (110)         | Bun (132)          | ORM1 (140)         | GORM (304)         | Ent (336)         
+Aggregate_Update               | Sqlx (116)         | Raw (138)          | ORM1 (306)         | GORM (718)         | Ent (776)         
+Aggregate_BatchSelect          | Raw (413)          | Sqlx (430)         | ORM1 (625)         | Bun (707)          | Ent (960)          | GORM (1057)       
+Aggregate_ReadSlice            | Raw (3232)         | Sqlx (3359)        | ORM1 (3616)        | Bun (6269)         | Ent (6705)         | GORM (8483)       
+Aggregate_Delete               | ORM1 (21)          | Raw (32)           | Sqlx (34)          | GORM (181)         | Ent (236)         
+
+
+============================================================================================================================================
+RAW BENCHMARK OUTPUT
+============================================================================================================================================
+
+goos: darwin
+goarch: arm64
+pkg: github.com/hanpama/orm1/benchmark/tests
+cpu: Apple M2 Max
+BenchmarkBun_Postgres_Simple_Insert-12                      	    3388	    343952 ns/op	    5080 B/op	      13 allocs/op
+BenchmarkBun_Postgres_Simple_Select-12                      	    3303	    310219 ns/op	    5405 B/op	      19 allocs/op
+BenchmarkBun_Postgres_Simple_Update-12                      	    1748	    649354 ns/op	   10238 B/op	      24 allocs/op
+BenchmarkBun_Postgres_Simple_BatchSelect-12                 	    1934	    527659 ns/op	   36103 B/op	     531 allocs/op
+BenchmarkBun_Postgres_Simple_ReadSlice-12                   	    2275	    465091 ns/op	   28780 B/op	     524 allocs/op
+BenchmarkBun_Postgres_Simple_Delete-12                      	    3410	    399994 ns/op	    4701 B/op	       5 allocs/op
+BenchmarkBun_Postgres_Aggregate_Select-12                   	    1210	    924736 ns/op	   19433 B/op	     132 allocs/op
+BenchmarkBun_Postgres_Aggregate_BatchSelect-12              	    1032	   1062808 ns/op	   35146 B/op	     707 allocs/op
+BenchmarkBun_Postgres_Aggregate_ReadSlice-12                	     543	   2298542 ns/op	  181908 B/op	    6269 allocs/op
+BenchmarkEnt_Postgres_Simple_Insert-12                      	    3286	    338618 ns/op	    2631 B/op	      67 allocs/op
+BenchmarkEnt_Postgres_Simple_Select-12                      	    3392	    306326 ns/op	    4024 B/op	     101 allocs/op
+BenchmarkEnt_Postgres_Simple_Update-12                      	     873	   1245354 ns/op	    8742 B/op	     220 allocs/op
+BenchmarkEnt_Postgres_Simple_BatchSelect-12                 	    2445	    498453 ns/op	   66628 B/op	    1226 allocs/op
+BenchmarkEnt_Postgres_Simple_ReadSlice-12                   	    2634	    408983 ns/op	   36689 B/op	    1099 allocs/op
+BenchmarkEnt_Postgres_Simple_Delete-12                      	    3484	    350222 ns/op	    1808 B/op	      41 allocs/op
+BenchmarkEnt_Postgres_Aggregate_Insert-12                   	     722	   1548003 ns/op	   18397 B/op	     423 allocs/op
+BenchmarkEnt_Postgres_Aggregate_Select-12                   	    1226	    917915 ns/op	   13954 B/op	     336 allocs/op
+BenchmarkEnt_Postgres_Aggregate_BatchSelect-12              	    1074	   1046469 ns/op	   38915 B/op	     960 allocs/op
+BenchmarkEnt_Postgres_Aggregate_Update-12                   	     568	   2215379 ns/op	   32533 B/op	     776 allocs/op
+BenchmarkEnt_Postgres_Aggregate_ReadSlice-12                	     648	   1791016 ns/op	  287386 B/op	    6705 allocs/op
+BenchmarkEnt_Postgres_Aggregate_Delete-12                   	    1060	   1066664 ns/op	   10994 B/op	     236 allocs/op
+BenchmarkGORM_Postgres_Simple_Insert-12                     	    1218	    874830 ns/op	    7008 B/op	      87 allocs/op
+BenchmarkGORM_Postgres_Simple_Select-12                     	    3294	    309242 ns/op	    5332 B/op	      79 allocs/op
+BenchmarkGORM_Postgres_Simple_Update-12                     	    1071	   1028247 ns/op	   13440 B/op	     165 allocs/op
+BenchmarkGORM_Postgres_Simple_BatchSelect-12                	    1814	    565666 ns/op	   68446 B/op	    1289 allocs/op
+BenchmarkGORM_Postgres_Simple_ReadSlice-12                  	    2252	    473024 ns/op	   37816 B/op	    1069 allocs/op
+BenchmarkGORM_Postgres_Simple_Delete-12                     	    1345	    821053 ns/op	    5641 B/op	      63 allocs/op
+BenchmarkGORM_Postgres_Aggregate_Insert-12                  	     698	   1605877 ns/op	   30146 B/op	     385 allocs/op
+BenchmarkGORM_Postgres_Aggregate_Select-12                  	    1206	    944920 ns/op	   22715 B/op	     304 allocs/op
+BenchmarkGORM_Postgres_Aggregate_BatchSelect-12             	     987	   1108624 ns/op	   53391 B/op	    1057 allocs/op
+BenchmarkGORM_Postgres_Aggregate_Update-12                  	     552	   2303400 ns/op	   58350 B/op	     718 allocs/op
+BenchmarkGORM_Postgres_Aggregate_Delete-12                  	     841	   1300654 ns/op	   17775 B/op	     181 allocs/op
+BenchmarkGORM_Postgres_Aggregate_ReadSlice-12               	     466	   3576911 ns/op	  378183 B/op	    8483 allocs/op
+BenchmarkORM1_Postgres_Simple_Insert-12                     	    3576	    336982 ns/op	    2875 B/op	      31 allocs/op
+BenchmarkORM1_Postgres_Simple_Select-12                     	    3442	    294692 ns/op	    2928 B/op	      44 allocs/op
+BenchmarkORM1_Postgres_Simple_Update-12                     	    1712	    625065 ns/op	    3849 B/op	      59 allocs/op
+BenchmarkORM1_Postgres_Simple_BatchSelect-12                	    2109	    496927 ns/op	   55123 B/op	     866 allocs/op
+BenchmarkORM1_Postgres_Simple_ReadSlice-12                  	    2629	    405733 ns/op	   23926 B/op	     567 allocs/op
+BenchmarkORM1_Postgres_Simple_Delete-12                     	    3531	    388563 ns/op	     367 B/op	      10 allocs/op
+BenchmarkORM1_Postgres_Aggregate_Insert-12                  	     724	   1505104 ns/op	    9657 B/op	     196 allocs/op
+BenchmarkORM1_Postgres_Aggregate_Select-12                  	    1230	    870353 ns/op	    6906 B/op	     140 allocs/op
+BenchmarkORM1_Postgres_Aggregate_BatchSelect-12             	    1048	   1064091 ns/op	   34011 B/op	     625 allocs/op
+BenchmarkORM1_Postgres_Aggregate_Update-12                  	     566	   2021616 ns/op	   14195 B/op	     306 allocs/op
+BenchmarkORM1_Postgres_Aggregate_ReadSlice-12               	     866	   1639916 ns/op	  189481 B/op	    3616 allocs/op
+BenchmarkORM1_Postgres_Aggregate_Delete-12                  	    1358	    802414 ns/op	     878 B/op	      21 allocs/op
+BenchmarkORM1_Postgres_Pagination_Forward_FirstPage-12      	    3891	    310074 ns/op	    4371 B/op	      65 allocs/op
+BenchmarkORM1_Postgres_Pagination_Forward_SecondPage-12     	    1818	    596673 ns/op	    6265 B/op	     115 allocs/op
+BenchmarkORM1_Postgres_Pagination_Backward_FirstPage-12     	    3927	    308846 ns/op	    4371 B/op	      65 allocs/op
+BenchmarkORM1_Postgres_Pagination_Backward_SecondPage-12    	    1872	    612559 ns/op	    6089 B/op	     109 allocs/op
+BenchmarkORM1_Postgres_RawQuery_ScanOne-12                  	    3422	    299274 ns/op	    3852 B/op	      55 allocs/op
+BenchmarkORM1_Postgres_RawQuery_ScanAll_10Rows-12           	    3322	    305805 ns/op	    5556 B/op	     117 allocs/op
+BenchmarkORM1_Postgres_RawQuery_ScanAll_100Rows-12          	    2563	    405033 ns/op	   18637 B/op	     660 allocs/op
+BenchmarkRaw_Postgres_Simple_Insert-12                      	    3673	    327093 ns/op	     304 B/op	       5 allocs/op
+BenchmarkRaw_Postgres_Simple_Select-12                      	    3578	    291109 ns/op	    1024 B/op	      28 allocs/op
+BenchmarkRaw_Postgres_Simple_Update-12                      	    1815	    663206 ns/op	    1257 B/op	      33 allocs/op
+BenchmarkRaw_Postgres_Simple_BatchSelect-12                 	    2208	    462944 ns/op	   45884 B/op	     542 allocs/op
+BenchmarkRaw_Postgres_Simple_Delete-12                      	    3504	    383354 ns/op	     207 B/op	       6 allocs/op
+BenchmarkRaw_Postgres_Simple_ReadSlice-12                   	    3309	    364368 ns/op	   10536 B/op	     721 allocs/op
+BenchmarkRaw_Postgres_Aggregate_Insert-12                   	     804	   1312887 ns/op	    4015 B/op	     109 allocs/op
+BenchmarkRaw_Postgres_Aggregate_Select-12                   	    1309	    869500 ns/op	    3490 B/op	     104 allocs/op
+BenchmarkRaw_Postgres_Aggregate_BatchSelect-12              	    1104	    985143 ns/op	   10556 B/op	     413 allocs/op
+BenchmarkRaw_Postgres_Aggregate_Update-12                   	     651	   1684051 ns/op	    5343 B/op	     138 allocs/op
+BenchmarkRaw_Postgres_Aggregate_Delete-12                   	     925	   1236021 ns/op	    1111 B/op	      32 allocs/op
+BenchmarkRaw_Postgres_Aggregate_ReadSlice-12                	     934	   1435109 ns/op	   83812 B/op	    3232 allocs/op
+BenchmarkSqlx_Postgres_Simple_Insert-12                     	    1837	    557603 ns/op	     488 B/op	      10 allocs/op
+BenchmarkSqlx_Postgres_Simple_Select-12                     	    1930	    584684 ns/op	    1248 B/op	      30 allocs/op
+BenchmarkSqlx_Postgres_Simple_Update-12                     	    1088	   1040439 ns/op	    1568 B/op	      38 allocs/op
+BenchmarkSqlx_Postgres_Simple_BatchSelect-12                	    1532	    731009 ns/op	   37808 B/op	     643 allocs/op
+BenchmarkSqlx_Postgres_Simple_ReadSlice-12                  	    1632	    692518 ns/op	   29288 B/op	     633 allocs/op
+BenchmarkSqlx_Postgres_Simple_Delete-12                     	    1833	    568439 ns/op	     288 B/op	       7 allocs/op
+BenchmarkSqlx_Postgres_Aggregate_Insert-12                  	     576	   2037754 ns/op	    3101 B/op	      66 allocs/op
+BenchmarkSqlx_Postgres_Aggregate_Select-12                  	     682	   1727484 ns/op	    4576 B/op	     110 allocs/op
+BenchmarkSqlx_Postgres_Aggregate_BatchSelect-12             	     634	   1832008 ns/op	   18128 B/op	     430 allocs/op
+BenchmarkSqlx_Postgres_Aggregate_Update-12                  	     478	   2669025 ns/op	    4956 B/op	     116 allocs/op
+BenchmarkSqlx_Postgres_Aggregate_ReadSlice-12               	     486	   2451614 ns/op	  137816 B/op	    3359 allocs/op
+BenchmarkSqlx_Postgres_Aggregate_Delete-12                  	     604	   1885950 ns/op	    1341 B/op	      34 allocs/op
+PASS
+ok  	github.com/hanpama/orm1/benchmark/tests	142.213s
+
+~/W/h/
