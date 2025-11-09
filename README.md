@@ -90,34 +90,51 @@ if err := session.Commit(ctx); err != nil {
 
 ### DDD Aggregate Support
 
-`orm1` treats aggregates as a first-class concept. Parent-child relationships are loaded and saved automatically as part of the aggregate root.
+`orm1` treats aggregates as a first-class concept. An aggregate defines a transactional consistency boundary—all entities within it are loaded and saved together, maintaining invariants across the entire structure.
 
-When you call `session.Get()` on a parent, its children are loaded. When you call `session.Save()`, `orm1` manages the state of the entire aggregate, cascading inserts, updates, and deletes to child entities as needed.
+When you call `session.Get()` on an aggregate root, all its children are loaded. When you call `session.Save()`, `orm1` cascades changes throughout the aggregate, handling inserts, updates, and deletes automatically.
 
 ```go
-type Post struct {
-    ID       int64  `orm1:"auto"`  // Auto-increment primary key
-    Title    string
-    Comments []*Comment
+// The Order aggregate represents a single transaction boundary.
+// Order totals must stay consistent with line items—they belong in one aggregate.
+type Order struct {
+    ID         int64  `orm1:"auto"`
+    CustomerID int64
+    Status     string  // "pending", "paid", "shipped"
+    Total      float64
+    Items      []*OrderItem
 }
 
-type Comment struct {
-    ID     int64 `orm1:"auto"`  // Auto-increment primary key
-    PostID int64 `orm1:"parental"`
-    Text   string
+type OrderItem struct {
+    ID        int64   `orm1:"auto"`
+    OrderID   int64   `orm1:"parental"`
+    ProductID int64   // Reference to Product aggregate (different boundary)
+    Quantity  int
+    Price     float64  // Price at time of order (immutable)
 }
 
-// Load post with all comments
-var post *Post
-if err := session.Get(ctx, &post, orm1.NewKey(1)); err != nil {
+// Load the entire order aggregate
+var order *Order
+if err := session.Get(ctx, &order, orm1.NewKey(123)); err != nil {
     log.Fatal(err)
 }
 
-// Add a new comment
-post.Comments = append(post.Comments, &Comment{Text: "Great!"})
+// Business logic: Add an item and recalculate total
+order.Items = append(order.Items, &OrderItem{
+    ProductID: 456,
+    Quantity:  2,
+    Price:     29.99,
+})
 
-// Save cascades changes to the Comments slice
-if err := session.Save(ctx, post); err != nil {
+// Maintain invariant: total must equal sum of items
+order.Total = 0
+for _, item := range order.Items {
+    order.Total += item.Price * float64(item.Quantity)
+}
+
+// Save persists all changes atomically
+// (updates Order, inserts new OrderItem)
+if err := session.Save(ctx, order); err != nil {
     log.Fatal(err)
 }
 ```
