@@ -96,11 +96,9 @@ type EntityMapping struct {
 	insertableColumns      []string
 	updatableColumns       []string
 	insertReturningColumns []string
-	updateReturningColumns []string
 
 	// Pre-computed field name lists for RETURNING operations
 	insertReturning []string
-	updateReturning []string
 }
 
 // NewEntityMapping creates a new EntityMapping with pre-computed column lists.
@@ -135,15 +133,29 @@ func NewEntityMapping(
 	em.parentalColumns = ComputeColumns(parentalKey, fieldMap)
 	em.insertableColumns = ComputeColumns(insertable, fieldMap)
 	em.updatableColumns = ComputeColumns(updatable, fieldMap)
-	em.insertReturningColumns = computeInsertReturning(allFields, insertable, fieldMap)
-	em.updateReturningColumns = computeUpdateReturning(allFields, updatable, primaryKey, fieldMap)
+	em.insertReturningColumns = computeInsertReturning(allFields, insertable, primaryKey, fieldMap)
 
-	em.insertReturning = computeFieldDifference(allFields, insertable)
-
-	excludeFields := make([]string, 0, len(updatable)+len(primaryKey))
-	excludeFields = append(excludeFields, updatable...)
-	excludeFields = append(excludeFields, primaryKey...)
-	em.updateReturning = computeFieldDifference(allFields, excludeFields)
+	// Compute field names for INSERT RETURNING (primary key + auto fields)
+	insertReturningSet := make(map[string]bool)
+	for _, pk := range primaryKey {
+		insertReturningSet[pk] = true
+	}
+	autoFields := computeFieldDifference(allFields, insertable)
+	for _, f := range autoFields {
+		insertReturningSet[f] = true
+	}
+	em.insertReturning = make([]string, 0, len(insertReturningSet))
+	for _, pk := range primaryKey {
+		if insertReturningSet[pk] {
+			em.insertReturning = append(em.insertReturning, pk)
+			delete(insertReturningSet, pk)
+		}
+	}
+	for _, f := range autoFields {
+		if insertReturningSet[f] {
+			em.insertReturning = append(em.insertReturning, f)
+		}
+	}
 
 	return em
 }
@@ -164,20 +176,12 @@ func (em *EntityMapping) InsertableColumns() []string { return em.insertableColu
 func (em *EntityMapping) UpdatableColumns() []string { return em.updatableColumns }
 
 // InsertReturningColumns returns columns that need to be returned after INSERT.
-// These are auto-generated columns (AllFields - Insertable).
+// Always includes primary key plus any auto-generated columns.
 func (em *EntityMapping) InsertReturningColumns() []string { return em.insertReturningColumns }
-
-// UpdateReturningColumns returns columns that need to be returned after UPDATE.
-// These are auto-generated columns excluding primary keys (AllFields - Updatable - PrimaryKey).
-func (em *EntityMapping) UpdateReturningColumns() []string { return em.updateReturningColumns }
 
 // InsertReturning returns field names that need to be returned after INSERT (pre-computed, zero allocation).
 // These correspond to InsertReturningColumns but as field names, not column names.
 func (em *EntityMapping) InsertReturning() []string { return em.insertReturning }
-
-// UpdateReturning returns field names that need to be returned after UPDATE (pre-computed, zero allocation).
-// These correspond to UpdateReturningColumns but as field names, not column names.
-func (em *EntityMapping) UpdateReturning() []string { return em.updateReturning }
 
 // ComputeColumns builds a column name list from field names.
 // This is called during EntityMapping initialization to pre-compute column lists.
@@ -207,24 +211,35 @@ func computeFieldDifference(allFields, excludeFields []string) []string {
 }
 
 // computeInsertReturning computes columns needed for INSERT RETURNING.
-// Logic: AllFields - Insertable = auto-generated columns only
-func computeInsertReturning(allFields, insertable []string, fieldMap map[string]*Field) []string {
-	fields := computeFieldDifference(allFields, insertable)
-	columns := make([]string, len(fields))
-	for i, f := range fields {
-		columns[i] = fieldMap[f].Column
+// Logic: PrimaryKey + (AllFields - Insertable)
+// Always returns primary key columns plus any auto-generated fields.
+func computeInsertReturning(allFields, insertable, primaryKey []string, fieldMap map[string]*Field) []string {
+	// Start with primary key fields
+	fieldSet := make(map[string]bool, len(primaryKey))
+	for _, pk := range primaryKey {
+		fieldSet[pk] = true
 	}
-	return columns
-}
 
-// computeUpdateReturning computes columns needed for UPDATE RETURNING.
-// Logic: AllFields - Updatable - PrimaryKey = auto-generated columns only (excluding PKs)
-func computeUpdateReturning(allFields, updatable, primaryKey []string, fieldMap map[string]*Field) []string {
-	excludeFields := make([]string, 0, len(updatable)+len(primaryKey))
-	excludeFields = append(excludeFields, updatable...)
-	excludeFields = append(excludeFields, primaryKey...)
+	// Add auto-generated fields (fields not in insertable)
+	autoFields := computeFieldDifference(allFields, insertable)
+	for _, f := range autoFields {
+		fieldSet[f] = true
+	}
 
-	fields := computeFieldDifference(allFields, excludeFields)
+	// Convert set to ordered slice (primary key first, then auto fields)
+	fields := make([]string, 0, len(fieldSet))
+	for _, pk := range primaryKey {
+		if fieldSet[pk] {
+			fields = append(fields, pk)
+			delete(fieldSet, pk) // Remove to avoid duplicates
+		}
+	}
+	for _, f := range autoFields {
+		if fieldSet[f] {
+			fields = append(fields, f)
+		}
+	}
+
 	columns := make([]string, len(fields))
 	for i, f := range fields {
 		columns[i] = fieldMap[f].Column

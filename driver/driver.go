@@ -24,6 +24,7 @@ type Rows interface {
 // as backends are not safe for concurrent use (they track transaction state).
 type Driver interface {
 	CreateBackend() Backend
+	Close() error
 }
 
 // Backend defines the interface for database-specific implementations.
@@ -39,7 +40,7 @@ type Backend interface {
 	// Entity CRUD operations
 	Select(ctx context.Context, op SelectOp) (Rows, error)
 	Insert(ctx context.Context, op InsertOp) (Rows, error)
-	Update(ctx context.Context, op UpdateOp) (Rows, error)
+	Update(ctx context.Context, op UpdateOp) error
 	Delete(ctx context.Context, op DeleteOp) (int64, error)
 
 	// Complex query operations (uses SQL AST)

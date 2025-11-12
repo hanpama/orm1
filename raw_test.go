@@ -5,148 +5,133 @@ import (
 	"testing"
 
 	"github.com/hanpama/orm1"
+	"github.com/hanpama/orm1/driver"
 )
 
-type RawUser struct {
-	ID   int64
-	Name string
-	Age  int64
-}
-
-type RawUserWithNull struct {
-	ID   int64
-	Name string
-	Age  *int64
-}
-
-func setupRawTestDB(t *testing.T, backend Backend) *DBSetup {
-	setup := SetupDB(t, backend)
-
-	// Drop existing tables for PostgreSQL
-	setup.DropTables(backend, "users")
-
-	setup.ExecSchema(t, backend, `
-		CREATE TABLE users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			age INTEGER
-		);
-	`, `
-		CREATE TABLE users (
-			id SERIAL PRIMARY KEY,
-			name TEXT NOT NULL,
-			age INTEGER
-		);
-	`)
-
-	return setup
-}
-
-func createRawTestSession(setup *DBSetup) *orm1.Session {
-	factory := setup.NewSessionFactory()
-	return factory.CreateSession()
+// RawSimpleAuto - struct for raw query results (no ORM tags)
+type RawSimpleAuto struct {
+	ID       int64
+	Name     string
+	Nullable *string
 }
 
 func TestRawQueryScanAll(t *testing.T) {
-	for _, backend := range AllBackends() {
-		t.Run(string(backend), func(t *testing.T) {
-			setup := setupRawTestDB(t, backend)
-			defer setup.Cleanup()
-
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
+			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			session := factory.CreateSession()
 
-			// Insert test data
-			_, err := setup.DB.Exec(`INSERT INTO users (name, age) VALUES ('Alice', 30), ('Bob', 25), ('Charlie', 35)`)
+			// Insert test data using raw query
+			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?), (?, ?)",
+				"Alice", "nullable1", "Bob", "nullable2", "Charlie", nil)
+			_, err := insertQuery.Exec(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Insert failed: %v", err)
 			}
-
-			session := createRawTestSession(setup)
 
 			// Test ScanAll with parameter interpolation
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, age FROM users WHERE age > ? ORDER BY age", 25)
+			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name IN (?, ?, ?) ORDER BY name", "Alice", "Bob", "Charlie")
 
-			var results []*RawUser
+			var results []*RawSimpleAuto
 			err = rawQuery.ScanAll(ctx, &results)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("ScanAll failed: %v", err)
 			}
 
-			if len(results) != 2 {
-				t.Fatalf("Expected 2 results, got %d", len(results))
+			if len(results) != 3 {
+				t.Fatalf("Expected 3 results, got %d", len(results))
 			}
 
-			// Check first row
+			// Check first row (Alice)
 			if results[0].Name != "Alice" {
 				t.Errorf("Expected name 'Alice', got %v", results[0].Name)
 			}
-			if results[0].Age != 30 {
-				t.Errorf("Expected age 30, got %v", results[0].Age)
+			if results[0].Nullable == nil || *results[0].Nullable != "nullable1" {
+				t.Errorf("Expected nullable 'nullable1', got %v", results[0].Nullable)
 			}
 
-			// Check second row
-			if results[1].Name != "Charlie" {
-				t.Errorf("Expected name 'Charlie', got %v", results[1].Name)
+			// Check second row (Bob)
+			if results[1].Name != "Bob" {
+				t.Errorf("Expected name 'Bob', got %v", results[1].Name)
 			}
-			if results[1].Age != 35 {
-				t.Errorf("Expected age 35, got %v", results[1].Age)
-			}
+
+			// Cleanup
+			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?, ?)", "Alice", "Bob", "Charlie")
+			cleanupQuery.Exec(ctx)
 		})
 	}
 }
 
 func TestRawQueryScanOne(t *testing.T) {
-	for _, backend := range AllBackends() {
-		t.Run(string(backend), func(t *testing.T) {
-			setup := setupRawTestDB(t, backend)
-			defer setup.Cleanup()
-
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
+			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			session := factory.CreateSession()
 
 			// Insert test data
-			_, err := setup.DB.Exec(`INSERT INTO users (name, age) VALUES ('Alice', 30)`)
+			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?)", "Alice", "test_value")
+			_, err := insertQuery.Exec(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Insert failed: %v", err)
 			}
 
-			session := createRawTestSession(setup)
-
 			// Test ScanOne
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, age FROM users WHERE name = ?", "Alice")
+			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name = ?", "Alice")
 
-			var result RawUser
+			var result RawSimpleAuto
 			err = rawQuery.ScanOne(ctx, &result)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("ScanOne failed: %v", err)
 			}
 
 			if result.Name != "Alice" {
 				t.Errorf("Expected name 'Alice', got %v", result.Name)
 			}
-			if result.Age != 30 {
-				t.Errorf("Expected age 30, got %v", result.Age)
+			if result.Nullable == nil || *result.Nullable != "test_value" {
+				t.Errorf("Expected nullable 'test_value', got %v", result.Nullable)
 			}
+
+			// Cleanup
+			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name = ?", "Alice")
+			cleanupQuery.Exec(ctx)
 		})
 	}
 }
 
 func TestRawQueryScanOneEmpty(t *testing.T) {
-	for _, backend := range AllBackends() {
-		t.Run(string(backend), func(t *testing.T) {
-			setup := setupRawTestDB(t, backend)
-			defer setup.Cleanup()
-
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-
-			session := createRawTestSession(setup)
+			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			session := factory.CreateSession()
 
 			// Test ScanOne with no results
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, age FROM users WHERE name = ?", "NonExistent")
+			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name = ?", "NonExistentUser")
 
-			var result RawUser
+			var result RawSimpleAuto
 			err := rawQuery.ScanOne(ctx, &result)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("ScanOne failed: %v", err)
 			}
 
 			// When no rows, struct should remain zero-valued
@@ -158,114 +143,138 @@ func TestRawQueryScanOneEmpty(t *testing.T) {
 }
 
 func TestRawQueryMultipleParams(t *testing.T) {
-	for _, backend := range AllBackends() {
-		t.Run(string(backend), func(t *testing.T) {
-			setup := setupRawTestDB(t, backend)
-			defer setup.Cleanup()
-
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
+			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			session := factory.CreateSession()
 
 			// Insert test data
-			_, err := setup.DB.Exec(`INSERT INTO users (name, age) VALUES ('Alice', 30), ('Bob', 25), ('Charlie', 35)`)
+			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?), (?, ?)",
+				"Alice", "a", "Bob", "b", "Charlie", "c")
+			_, err := insertQuery.Exec(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Insert failed: %v", err)
 			}
 
-			session := createRawTestSession(setup)
-
 			// Test with multiple parameters
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, age FROM users WHERE age >= ? AND age <= ? ORDER BY age", 25, 30)
+			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name >= ? AND name <= ? ORDER BY name", "Alice", "Bob")
 
-			var results []*RawUser
+			var results []*RawSimpleAuto
 			err = rawQuery.ScanAll(ctx, &results)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("ScanAll failed: %v", err)
 			}
 
 			if len(results) != 2 {
 				t.Fatalf("Expected 2 results, got %d", len(results))
 			}
 
-			if results[0].Name != "Bob" {
-				t.Errorf("Expected name 'Bob', got %v", results[0].Name)
+			if results[0].Name != "Alice" {
+				t.Errorf("Expected name 'Alice', got %v", results[0].Name)
 			}
-			if results[1].Name != "Alice" {
-				t.Errorf("Expected name 'Alice', got %v", results[1].Name)
+			if results[1].Name != "Bob" {
+				t.Errorf("Expected name 'Bob', got %v", results[1].Name)
 			}
+
+			// Cleanup
+			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?, ?)", "Alice", "Bob", "Charlie")
+			cleanupQuery.Exec(ctx)
 		})
 	}
 }
 
 func TestRawQueryWithNullValues(t *testing.T) {
-	for _, backend := range AllBackends() {
-		t.Run(string(backend), func(t *testing.T) {
-			setup := setupRawTestDB(t, backend)
-			defer setup.Cleanup()
-
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
+			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			session := factory.CreateSession()
 
-			// Insert test data with NULL age
-			_, err := setup.DB.Exec(`INSERT INTO users (name, age) VALUES ('Alice', 30), ('Bob', NULL)`)
+			// Insert test data with NULL nullable
+			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?)",
+				"Alice", "has_value", "Bob", nil)
+			_, err := insertQuery.Exec(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Insert failed: %v", err)
 			}
 
-			session := createRawTestSession(setup)
-
 			// Test query that includes NULL values
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, age FROM users ORDER BY id")
+			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name IN (?, ?) ORDER BY name", "Alice", "Bob")
 
-			var results []*RawUserWithNull
+			var results []*RawSimpleAuto
 			err = rawQuery.ScanAll(ctx, &results)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("ScanAll failed: %v", err)
 			}
 
 			if len(results) != 2 {
 				t.Fatalf("Expected 2 results, got %d", len(results))
 			}
 
+			// Check that non-NULL is handled properly
+			if results[0].Nullable == nil || *results[0].Nullable != "has_value" {
+				t.Errorf("Expected nullable 'has_value', got %v", results[0].Nullable)
+			}
 			// Check that NULL is handled properly
-			if results[0].Age == nil || *results[0].Age != 30 {
-				t.Errorf("Expected age 30, got %v", results[0].Age)
+			if results[1].Nullable != nil {
+				t.Errorf("Expected nullable nil, got %v", *results[1].Nullable)
 			}
-			if results[1].Age != nil {
-				t.Errorf("Expected age nil, got %v", results[1].Age)
-			}
+
+			// Cleanup
+			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?)", "Alice", "Bob")
+			cleanupQuery.Exec(ctx)
 		})
 	}
 }
 
 func TestRawQueryRows(t *testing.T) {
-	for _, backend := range AllBackends() {
-		t.Run(string(backend), func(t *testing.T) {
-			setup := setupRawTestDB(t, backend)
-			defer setup.Cleanup()
-
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
+			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			session := factory.CreateSession()
 
 			// Insert test data
-			_, err := setup.DB.Exec(`INSERT INTO users (name, age) VALUES ('Alice', 30), ('Bob', 25)`)
+			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?)",
+				"Alice", "a", "Bob", "b")
+			_, err := insertQuery.Exec(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Insert failed: %v", err)
 			}
 
-			session := createRawTestSession(setup)
-
 			// Test Rows for manual iteration
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, age FROM users ORDER BY age")
+			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name IN (?, ?) ORDER BY name", "Alice", "Bob")
 
 			rows, err := rawQuery.Rows(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Rows failed: %v", err)
 			}
 			defer rows.Close()
 
-			var users []RawUser
+			var users []RawSimpleAuto
 			for rows.Next() {
-				var user RawUser
-				if err := rows.Scan(&user.ID, &user.Name, &user.Age); err != nil {
-					t.Fatal(err)
+				var user RawSimpleAuto
+				if err := rows.Scan(&user.ID, &user.Name, &user.Nullable); err != nil {
+					t.Fatalf("Scan failed: %v", err)
 				}
 				users = append(users, user)
 			}
@@ -274,37 +283,46 @@ func TestRawQueryRows(t *testing.T) {
 				t.Fatalf("Expected 2 users, got %d", len(users))
 			}
 
-			if users[0].Name != "Bob" {
-				t.Errorf("Expected first user 'Bob', got %v", users[0].Name)
+			if users[0].Name != "Alice" {
+				t.Errorf("Expected first user 'Alice', got %v", users[0].Name)
 			}
-			if users[1].Name != "Alice" {
-				t.Errorf("Expected second user 'Alice', got %v", users[1].Name)
+			if users[1].Name != "Bob" {
+				t.Errorf("Expected second user 'Bob', got %v", users[1].Name)
 			}
+
+			// Cleanup
+			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?)", "Alice", "Bob")
+			cleanupQuery.Exec(ctx)
 		})
 	}
 }
 
 func TestRawQueryExec(t *testing.T) {
-	for _, backend := range AllBackends() {
-		t.Run(string(backend), func(t *testing.T) {
-			setup := setupRawTestDB(t, backend)
-			defer setup.Cleanup()
-
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
+			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			session := factory.CreateSession()
 
 			// Insert test data
-			_, err := setup.DB.Exec(`INSERT INTO users (name, age) VALUES ('Alice', 30), ('Bob', 25), ('Charlie', 35)`)
+			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?), (?, ?)",
+				"Alice", "a", "Bob", "b", "Charlie", "c")
+			_, err := insertQuery.Exec(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Insert failed: %v", err)
 			}
 
-			session := createRawTestSession(setup)
-
 			// Test UPDATE with Exec
-			rawQuery := orm1.NewRawQuery(session, "UPDATE users SET age = ? WHERE name = ?", 31, "Alice")
+			rawQuery := orm1.NewRawQuery(session, "UPDATE simple_auto SET nullable = ? WHERE name = ?", "updated", "Alice")
 			affected, err := rawQuery.Exec(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Exec failed: %v", err)
 			}
 
 			if affected != 1 {
@@ -312,41 +330,50 @@ func TestRawQueryExec(t *testing.T) {
 			}
 
 			// Verify the update
-			var result RawUser
-			verifyQuery := orm1.NewRawQuery(session, "SELECT id, name, age FROM users WHERE name = ?", "Alice")
+			var result RawSimpleAuto
+			verifyQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name = ?", "Alice")
 			err = verifyQuery.ScanOne(ctx, &result)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("ScanOne failed: %v", err)
 			}
 
-			if result.Age != 31 {
-				t.Errorf("Expected age 31 after update, got %d", result.Age)
+			if result.Nullable == nil || *result.Nullable != "updated" {
+				t.Errorf("Expected nullable 'updated' after update, got %v", result.Nullable)
 			}
+
+			// Cleanup
+			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?, ?)", "Alice", "Bob", "Charlie")
+			cleanupQuery.Exec(ctx)
 		})
 	}
 }
 
 func TestRawQueryExecDelete(t *testing.T) {
-	for _, backend := range AllBackends() {
-		t.Run(string(backend), func(t *testing.T) {
-			setup := setupRawTestDB(t, backend)
-			defer setup.Cleanup()
-
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
+			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			session := factory.CreateSession()
 
 			// Insert test data
-			_, err := setup.DB.Exec(`INSERT INTO users (name, age) VALUES ('Alice', 30), ('Bob', 25), ('Charlie', 35)`)
+			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?), (?, ?)",
+				"Alice", "a", "Bob", "b", "Charlie", "c")
+			_, err := insertQuery.Exec(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Insert failed: %v", err)
 			}
 
-			session := createRawTestSession(setup)
-
 			// Test DELETE with Exec
-			rawQuery := orm1.NewRawQuery(session, "DELETE FROM users WHERE age < ?", 30)
+			rawQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name = ?", "Bob")
 			affected, err := rawQuery.Exec(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Exec failed: %v", err)
 			}
 
 			if affected != 1 {
@@ -354,35 +381,43 @@ func TestRawQueryExecDelete(t *testing.T) {
 			}
 
 			// Verify the delete
-			var results []*RawUser
-			verifyQuery := orm1.NewRawQuery(session, "SELECT id, name, age FROM users ORDER BY age")
+			var results []*RawSimpleAuto
+			verifyQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name IN (?, ?, ?) ORDER BY name", "Alice", "Bob", "Charlie")
 			err = verifyQuery.ScanAll(ctx, &results)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("ScanAll failed: %v", err)
 			}
 
 			if len(results) != 2 {
 				t.Fatalf("Expected 2 users remaining, got %d", len(results))
 			}
+
+			// Cleanup
+			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?)", "Alice", "Charlie")
+			cleanupQuery.Exec(ctx)
 		})
 	}
 }
 
 func TestRawQueryExecInsert(t *testing.T) {
-	for _, backend := range AllBackends() {
-		t.Run(string(backend), func(t *testing.T) {
-			setup := setupRawTestDB(t, backend)
-			defer setup.Cleanup()
-
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			session := createRawTestSession(setup)
+			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			session := factory.CreateSession()
 
 			// Test INSERT with Exec (use ? placeholders for all backends)
-			rawQuery := orm1.NewRawQuery(session, "INSERT INTO users (name, age) VALUES (?, ?)", "Dave", 40)
+			rawQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?)", "Dave", "dave_value")
 
 			affected, err := rawQuery.Exec(ctx)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Exec failed: %v", err)
 			}
 
 			if affected != 1 {
@@ -390,20 +425,24 @@ func TestRawQueryExecInsert(t *testing.T) {
 			}
 
 			// Verify the insert
-			var results []*RawUser
-			verifyQuery := orm1.NewRawQuery(session, "SELECT id, name, age FROM users WHERE name = ?", "Dave")
+			var results []*RawSimpleAuto
+			verifyQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name = ?", "Dave")
 			err = verifyQuery.ScanAll(ctx, &results)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("ScanAll failed: %v", err)
 			}
 
 			if len(results) != 1 {
 				t.Fatalf("Expected 1 user, got %d", len(results))
 			}
 
-			if results[0].Name != "Dave" || results[0].Age != 40 {
-				t.Errorf("Expected Dave with age 40, got %s with age %d", results[0].Name, results[0].Age)
+			if results[0].Name != "Dave" || results[0].Nullable == nil || *results[0].Nullable != "dave_value" {
+				t.Errorf("Expected Dave with nullable 'dave_value', got %s with nullable %v", results[0].Name, results[0].Nullable)
 			}
+
+			// Cleanup
+			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name = ?", "Dave")
+			cleanupQuery.Exec(ctx)
 		})
 	}
 }

@@ -6,12 +6,6 @@ import (
 	"github.com/hanpama/orm1/sql"
 )
 
-// Package-level bool pointers for optimization
-var (
-	boolTrue  = true
-	boolFalse = false
-)
-
 // Page represents pagination metadata
 type Page struct {
 	Cursors         []Key
@@ -29,31 +23,22 @@ func (q *EntityQuery[T]) Paginate(ctx context.Context, after Key, first *int, be
 	pkCount := len(q.mapping.PrimaryKey)
 	orderBy := make([]sql.OrderBy, len(q.orderByOpts), len(q.orderByOpts)+pkCount)
 	copy(orderBy, q.orderByOpts)
-	nullsLast := true
 	for _, fieldName := range q.mapping.PrimaryKey {
 		field := q.mapping.FieldMap[fieldName]
 		orderBy = append(orderBy, sql.OrderBy{
 			Expr:      sql.SQLQN{Part1: q.alias, Part2: field.Column},
 			Ascending: true,
-			NullsLast: &nullsLast,
+			NullsLast: true,
 		})
 	}
 
 	if last != nil {
-		// Optimization #2: use package-level bool pointers
+		// Reverse all ordering for backward pagination
 		for i := range orderBy {
-			var reversedNullsLast *bool
-			if orderBy[i].NullsLast != nil {
-				if *orderBy[i].NullsLast {
-					reversedNullsLast = &boolFalse
-				} else {
-					reversedNullsLast = &boolTrue
-				}
-			}
 			orderBy[i] = sql.OrderBy{
 				Expr:      orderBy[i].Expr,
 				Ascending: !orderBy[i].Ascending,
-				NullsLast: reversedNullsLast,
+				NullsLast: !orderBy[i].NullsLast,
 			}
 		}
 	}
@@ -325,8 +310,7 @@ func formatCursorPredicate(orderBys []sql.OrderBy, values []any, isForward bool)
 				// For the last column: comparison based on direction
 				if cursorValue == nil {
 					// Cursor value is NULL: handle based on NULLS FIRST/LAST
-					nullsLast := sort.NullsLast != nil && *sort.NullsLast
-					if nullsLast {
+					if sort.NullsLast {
 						// NULL is sorted last
 						if isForward {
 							// Forward from NULL (last): no more rows
@@ -355,8 +339,7 @@ func formatCursorPredicate(orderBys []sql.OrderBy, values []any, isForward bool)
 					}
 
 					// NULL handling: should col IS NULL be included?
-					nullsLast := sort.NullsLast != nil && *sort.NullsLast
-					if nullsLast == isForward {
+					if sort.NullsLast == isForward {
 						// NULLs come after cursor, include them
 						andPredicates = append(andPredicates, sql.SQLAny{Els: []sql.SQL{comp, sql.SQLIsNull{Operand: sort.Expr}}})
 					} else {

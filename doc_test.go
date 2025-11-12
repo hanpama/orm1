@@ -3,22 +3,23 @@ package orm1_test
 import (
 	"context"
 	"database/sql"
-	"log"
+	"fmt"
 
 	"github.com/hanpama/orm1"
+	"github.com/hanpama/orm1/driver"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 // Domain entities for examples
 type Order struct {
-	ID         int64  `orm1:"primary,auto"`
+	ID         int64 `orm1:"auto"`
 	CustomerID int64
 	Total      float64
 	Items      []*OrderItem // Aggregate children
 }
 
 type OrderItem struct {
-	ID       int64   `orm1:"primary,auto"`
+	ID       int64   `orm1:"auto"`
 	OrderID  int64   `orm1:"parental"` // Foreign key to parent
 	Product  string
 	Quantity int
@@ -26,19 +27,19 @@ type OrderItem struct {
 }
 
 type Post struct {
-	ID       int64  `orm1:"primary,auto"`
+	ID       int64 `orm1:"auto"`
 	Title    string
 	Comments []*Comment
 }
 
 type Comment struct {
-	ID     int64 `orm1:"primary,auto"`
+	ID     int64 `orm1:"auto"`
 	PostID int64 `orm1:"parental"`
 	Text   string
 }
 
 type User struct {
-	ID        int64 `orm1:"primary,auto"`
+	ID        int64  `orm1:"auto"`
 	Age       int
 	CreatedAt string `orm1:"auto"`
 }
@@ -64,10 +65,9 @@ func Example_quickStart() {
 	)`)
 
 	// 2. Register entities and create factory
-	factory := orm1.NewSessionFactory()
-	factory.RegisterEntity(&Order{})
-	factory.RegisterEntity(&OrderItem{})
-	factory.SetDriver(orm1.NewSQLiteDriver(db))
+	factory := orm1.NewSessionFactoryWithDriver(driver.NewSQLite(db))
+	factory.RegisterEntity(&Order{}, orm1.WithTable("orders"))
+	factory.RegisterEntity(&OrderItem{}, orm1.WithTable("order_items"))
 
 	// Setup: Create an order with items
 	setupSession := factory.CreateSession()
@@ -88,7 +88,7 @@ func Example_quickStart() {
 
 	// Start a transaction
 	if err := session.Begin(ctx); err != nil {
-		log.Fatal(err)
+		return
 	}
 	// Defer rollback in case of error or panic
 	defer session.Rollback(ctx)
@@ -112,21 +112,22 @@ func Example_quickStart() {
 	// (updates Order, inserts new OrderItem)
 	if err := session.Save(ctx, loadedOrder); err != nil {
 		// Rollback will be triggered by the defer
-		log.Fatal(err)
+		return
 	}
 
 	// Commit the transaction
 	if err := session.Commit(ctx); err != nil {
-		log.Fatal(err)
+		return
 	}
 
 	// Verify the result
 	verifySession := factory.CreateSession()
 	var verifyOrder *Order
 	verifySession.Get(context.Background(), &verifyOrder, orm1.NewKey(order.ID))
-	log.Printf("Order total: %.2f, Items: %d", verifyOrder.Total, len(verifyOrder.Items))
+	fmt.Printf("Order total: %.2f, Items: %d\n", verifyOrder.Total, len(verifyOrder.Items))
 
 	// Output:
+	// Order total: 159.99, Items: 2
 }
 
 // Example from DDD Aggregate Support in README
@@ -145,10 +146,9 @@ func Example_aggregateSupport() {
 		text TEXT
 	)`)
 
-	factory := orm1.NewSessionFactory()
+	factory := orm1.NewSessionFactoryWithDriver(driver.NewSQLite(db))
 	factory.RegisterEntity(&Post{}, orm1.WithTable("posts"))
 	factory.RegisterEntity(&Comment{}, orm1.WithTable("comments"))
-	factory.SetDriver(orm1.NewSQLiteDriver(db))
 
 	// Setup: Create a post
 	setupSession := factory.CreateSession()
@@ -165,7 +165,7 @@ func Example_aggregateSupport() {
 	// Load post with all comments
 	var loadedPost *Post
 	if err := session.Get(ctx, &loadedPost, orm1.NewKey(post.ID)); err != nil {
-		log.Fatal(err)
+		return
 	}
 
 	// Add a new comment
@@ -173,13 +173,20 @@ func Example_aggregateSupport() {
 
 	// Save cascades changes to the Comments slice
 	if err := session.Save(ctx, loadedPost); err != nil {
-		log.Fatal(err)
+		return
 	}
 	if err := session.Commit(ctx); err != nil {
-		log.Fatal(err)
+		return
 	}
 
+	// Verify
+	verifySession := factory.CreateSession()
+	var verifyPost *Post
+	verifySession.Get(context.Background(), &verifyPost, orm1.NewKey(post.ID))
+	fmt.Printf("Post has %d comment(s)\n", len(verifyPost.Comments))
+
 	// Output:
+	// Post has 1 comment(s)
 }
 
 // Example from Type-Safe Queries in README
@@ -195,9 +202,8 @@ func Example_typeSafeQueries() {
 	)`)
 	db.Exec(`INSERT INTO users (age) VALUES (25), (30), (15)`)
 
-	factory := orm1.NewSessionFactory()
+	factory := orm1.NewSessionFactoryWithDriver(driver.NewSQLite(db))
 	factory.RegisterEntity(&User{}, orm1.WithTable("users"))
-	factory.SetDriver(orm1.NewSQLiteDriver(db))
 
 	session := factory.CreateSession()
 	ctx := context.Background()
@@ -209,12 +215,13 @@ func Example_typeSafeQueries() {
 		FetchAll(ctx)
 
 	if err != nil {
-		log.Fatal(err)
+		return
 	}
 
-	log.Printf("Found %d users over 18", len(users))
+	fmt.Printf("Found %d users over 18\n", len(users))
 
 	// Output:
+	// Found 2 users over 18
 }
 
 // Example from Raw SQL in README
@@ -233,8 +240,7 @@ func Example_rawSQL() {
 		('Food', 30.00),
 		('Transport', 20.00)`)
 
-	factory := orm1.NewSessionFactory()
-	factory.SetDriver(orm1.NewSQLiteDriver(db))
+	factory := orm1.NewSessionFactoryWithDriver(driver.NewSQLite(db))
 
 	session := factory.CreateSession()
 	ctx := context.Background()
@@ -250,8 +256,10 @@ func Example_rawSQL() {
 	raw.ScanAll(ctx, &results)
 
 	for _, r := range results {
-		log.Printf("%s: %.2f", r.Category, r.Total)
+		fmt.Printf("%s: %.2f\n", r.Category, r.Total)
 	}
 
 	// Output:
+	// Food: 80.00
+	// Transport: 20.00
 }
