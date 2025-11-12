@@ -109,61 +109,59 @@ func (q *EntityQuery[T]) OrderBy(orderBys ...sql.OrderBy) *EntityQuery[T] {
 	return q
 }
 
-// Asc creates an ascending OrderBy clause without explicit NULL ordering.
+// Asc creates an ascending OrderBy clause with NULLS LAST (PostgreSQL/Oracle standard).
+// This ensures consistent behavior across all databases (PostgreSQL, SQLite, Oracle).
 func (q *EntityQuery[T]) Asc(expr string, params ...any) sql.OrderBy {
 	return sql.OrderBy{
 		Expr:      sql.ParseSQL(expr, params...),
 		Ascending: true,
-		NullsLast: nil,
+		NullsLast: true,
 	}
 }
 
-// Desc creates a descending OrderBy clause without explicit NULL ordering.
+// Desc creates a descending OrderBy clause with NULLS FIRST (PostgreSQL/Oracle standard).
+// This ensures consistent behavior across all databases (PostgreSQL, SQLite, Oracle).
 func (q *EntityQuery[T]) Desc(expr string, params ...any) sql.OrderBy {
 	return sql.OrderBy{
 		Expr:      sql.ParseSQL(expr, params...),
 		Ascending: false,
-		NullsLast: nil,
+		NullsLast: false,
 	}
 }
 
 // AscNullsLast creates an ascending OrderBy clause with NULL values sorted last.
 func (q *EntityQuery[T]) AscNullsLast(expr string, params ...any) sql.OrderBy {
-	nullsLast := true
 	return sql.OrderBy{
 		Expr:      sql.ParseSQL(expr, params...),
 		Ascending: true,
-		NullsLast: &nullsLast,
+		NullsLast: true,
 	}
 }
 
 // AscNullsFirst creates an ascending OrderBy clause with NULL values sorted first.
 func (q *EntityQuery[T]) AscNullsFirst(expr string, params ...any) sql.OrderBy {
-	nullsLast := false
 	return sql.OrderBy{
 		Expr:      sql.ParseSQL(expr, params...),
 		Ascending: true,
-		NullsLast: &nullsLast,
+		NullsLast: false,
 	}
 }
 
 // DescNullsLast creates a descending OrderBy clause with NULL values sorted last.
 func (q *EntityQuery[T]) DescNullsLast(expr string, params ...any) sql.OrderBy {
-	nullsLast := true
 	return sql.OrderBy{
 		Expr:      sql.ParseSQL(expr, params...),
 		Ascending: false,
-		NullsLast: &nullsLast,
+		NullsLast: true,
 	}
 }
 
 // DescNullsFirst creates a descending OrderBy clause with NULL values sorted first.
 func (q *EntityQuery[T]) DescNullsFirst(expr string, params ...any) sql.OrderBy {
-	nullsLast := false
 	return sql.OrderBy{
 		Expr:      sql.ParseSQL(expr, params...),
 		Ascending: false,
-		NullsLast: &nullsLast,
+		NullsLast: false,
 	}
 }
 

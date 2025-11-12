@@ -45,19 +45,17 @@ type InsertOp struct {
 // - Which table to update (Schema, Table)
 // - Which columns to update (Sets)
 // - Which columns to use in WHERE clause (Where, typically primary key)
-// - Which columns to return after update (Returning)
 // - The actual values for SET and WHERE clauses (SetValues, WhereValues)
 //
 // SetValues[i][j] corresponds to Sets[j]
 // WhereValues[i][j] corresponds to Where[j]
 type UpdateOp struct {
-	Schema      string    // Database schema (optional)
-	Table       string    // Table name
-	Sets        []string  // Columns to update (SET clause)
-	Where       []string  // Columns for WHERE clause (typically primary key)
-	Returning   []string  // Columns to return after update
-	SetValues   [][]any   // Values for SET clause: SetValues[i][j] maps to Sets[j]
-	WhereValues [][]any   // Values for WHERE clause: WhereValues[i][j] maps to Where[j]
+	Schema      string   // Database schema (optional)
+	Table       string   // Table name
+	Sets        []string // Columns to update (SET clause)
+	Where       []string // Columns for WHERE clause (typically primary key)
+	SetValues   [][]any  // Values for SET clause: SetValues[i][j] maps to Sets[j]
+	WhereValues [][]any  // Values for WHERE clause: WhereValues[i][j] maps to Where[j]
 }
 
 // DeleteOp represents a batch DELETE operation for entity removal.

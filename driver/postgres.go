@@ -54,6 +54,28 @@ func (b *postgreSQLBackend) writeByte(c byte) {
 	b.sqlBuffer = append(b.sqlBuffer, c)
 }
 
+// quoteIdentifier quotes a SQL identifier by escaping " as "" and wrapping in "
+func (b *postgreSQLBackend) quoteIdentifier(identifier string) {
+	b.writeByte('"')
+	for i := 0; i < len(identifier); i++ {
+		if identifier[i] == '"' {
+			b.writeString(`""`)
+		} else {
+			b.writeByte(identifier[i])
+		}
+	}
+	b.writeByte('"')
+}
+
+// quoteTable quotes a table reference, optionally with schema
+func (b *postgreSQLBackend) quoteTable(schema, table string) {
+	if schema != "" {
+		b.quoteIdentifier(schema)
+		b.writeByte('.')
+	}
+	b.quoteIdentifier(table)
+}
+
 // sqlString returns the current SQL buffer as a string.
 func (b *postgreSQLBackend) sqlString() string {
 	return string(b.sqlBuffer)
@@ -99,18 +121,22 @@ func (d *postgreSQLDriver) CreateBackend() Backend {
 	return newPostgreSQLBackend(d.db)
 }
 
+func (d *postgreSQLDriver) Close() error {
+	return d.db.Close()
+}
+
 // renderSQL renders a SQL AST node to the SQL buffer and appends parameters to args
 func (b *postgreSQLBackend) renderSQL(sql sqlast.SQL, args *[]any) {
 	switch v := sql.(type) {
 	case sqlast.SQLN:
-		b.writeString(v.Part)
+		b.quoteIdentifier(v.Part)
 	case sqlast.SQLQN:
 		if v.Part1 == "" {
-			b.writeString(v.Part2)
+			b.quoteIdentifier(v.Part2)
 		} else {
-			b.writeString(v.Part1)
+			b.quoteIdentifier(v.Part1)
 			b.writeByte('.')
-			b.writeString(v.Part2)
+			b.quoteIdentifier(v.Part2)
 		}
 	case sqlast.SQLText:
 		b.writeString(v.Text)
@@ -228,13 +254,16 @@ func (b *postgreSQLBackend) renderSQLQuery(stmt sqlast.SQLQuery) (string, []any)
 				b.writeString(" DESC")
 			}
 
-			if ob.NullsLast != nil {
-				if *ob.NullsLast {
-					b.writeString(" NULLS LAST")
-				} else {
-					b.writeString(" NULLS FIRST")
-				}
+			// PostgreSQL default: ASC → NULLS LAST, DESC → NULLS FIRST
+			// Only render NULLS clause if it differs from the default
+			if ob.Ascending && !ob.NullsLast {
+				// ASC with NULLS FIRST (non-default)
+				b.writeString(" NULLS FIRST")
+			} else if !ob.Ascending && ob.NullsLast {
+				// DESC with NULLS LAST (non-default)
+				b.writeString(" NULLS LAST")
 			}
+			// Skip NULLS clause when it matches PostgreSQL default
 		}
 	}
 
@@ -260,11 +289,6 @@ func (b *postgreSQLBackend) renderSelect(stmt SelectOp, chunk [][]any) (string, 
 	numKeyColumns := len(stmt.KeyColumns)
 	b.resetArgsBuffer(len(chunk) * numKeyColumns)
 
-	tableSQL := stmt.FromTable
-	if stmt.FromSchema != "" {
-		tableSQL = stmt.FromSchema + "." + stmt.FromTable
-	}
-
 	b.resetSQLBuffer(512)
 
 	b.writeString("WITH \"$k\" (")
@@ -272,7 +296,7 @@ func (b *postgreSQLBackend) renderSelect(stmt SelectOp, chunk [][]any) (string, 
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(") AS (VALUES ")
 
@@ -289,9 +313,9 @@ func (b *postgreSQLBackend) renderSelect(stmt SelectOp, chunk [][]any) (string, 
 			if idx == 0 {
 				// First row: use COALESCE to infer type from table schema
 				b.writeString("COALESCE((NULL::")
-				b.writeString(tableSQL)
+				b.quoteTable(stmt.FromSchema, stmt.FromTable)
 				b.writeString(").")
-				b.writeString(stmt.KeyColumns[j])
+				b.quoteIdentifier(stmt.KeyColumns[j])
 				b.writeString(", $")
 				b.writeString(strconv.Itoa(b.paramIndex))
 				b.writeByte(')')
@@ -311,24 +335,24 @@ func (b *postgreSQLBackend) renderSelect(stmt SelectOp, chunk [][]any) (string, 
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(stmt.FromTable)
+		b.quoteIdentifier(stmt.FromTable)
 		b.writeByte('.')
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 
 	b.writeString(" FROM ")
-	b.writeString(tableSQL)
+	b.quoteTable(stmt.FromSchema, stmt.FromTable)
 
 	b.writeString(" JOIN \"$k\" ON ")
 	for j, col := range stmt.KeyColumns {
 		if j > 0 {
 			b.writeString(" AND ")
 		}
-		b.writeString(stmt.FromTable)
+		b.quoteIdentifier(stmt.FromTable)
 		b.writeByte('.')
-		b.writeString(col)
+		b.quoteIdentifier(col)
 		b.writeString(" = \"$k\".")
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 
 	return b.sqlString(), b.argsBuffer
@@ -343,11 +367,6 @@ func (b *postgreSQLBackend) renderInsert(stmt InsertOp, chunk [][]any) (string, 
 	numColumns := len(stmt.Insert)
 	b.resetArgsBuffer(len(chunk) * numColumns)
 
-	tableSQL := stmt.IntoTable
-	if stmt.IntoSchema != "" {
-		tableSQL = stmt.IntoSchema + "." + stmt.IntoTable
-	}
-
 	b.resetSQLBuffer(512)
 
 	b.writeString("WITH \"$r\" (")
@@ -355,7 +374,7 @@ func (b *postgreSQLBackend) renderInsert(stmt InsertOp, chunk [][]any) (string, 
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(") AS (VALUES ")
 
@@ -372,9 +391,9 @@ func (b *postgreSQLBackend) renderInsert(stmt InsertOp, chunk [][]any) (string, 
 			if idx == 0 {
 				// First row: use COALESCE to infer type from table schema
 				b.writeString("COALESCE((NULL::")
-				b.writeString(tableSQL)
+				b.quoteTable(stmt.IntoSchema, stmt.IntoTable)
 				b.writeString(").")
-				b.writeString(stmt.Insert[j])
+				b.quoteIdentifier(stmt.Insert[j])
 				b.writeString(", $")
 				b.writeString(strconv.Itoa(b.paramIndex))
 				b.writeByte(')')
@@ -390,20 +409,20 @@ func (b *postgreSQLBackend) renderInsert(stmt InsertOp, chunk [][]any) (string, 
 	b.writeString(") ")
 
 	b.writeString("INSERT INTO ")
-	b.writeString(tableSQL)
+	b.quoteTable(stmt.IntoSchema, stmt.IntoTable)
 	b.writeString(" (")
 	for i, col := range stmt.Insert {
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(") SELECT ")
 	for i, col := range stmt.Insert {
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(" FROM \"$r\"")
 
@@ -413,9 +432,9 @@ func (b *postgreSQLBackend) renderInsert(stmt InsertOp, chunk [][]any) (string, 
 			if i > 0 {
 				b.writeString(", ")
 			}
-			b.writeString(stmt.IntoTable)
+			b.quoteIdentifier(stmt.IntoTable)
 			b.writeByte('.')
-			b.writeString(col)
+			b.quoteIdentifier(col)
 		}
 	}
 
@@ -423,16 +442,11 @@ func (b *postgreSQLBackend) renderInsert(stmt InsertOp, chunk [][]any) (string, 
 }
 
 // renderUpdate renders a CTE-based UPDATE FROM pattern with UNION for type inference
-// Query format: WITH new_values AS (SELECT id, name, email FROM table WHERE FALSE UNION ALL VALUES ($1, $2, $3))
+// Query format: WITH "$v" AS (SELECT ... FROM table WHERE FALSE UNION ALL VALUES (...))
 //
-//	UPDATE table SET name = new_values.name FROM new_values WHERE table.id = new_values.id RETURNING ...
+//	UPDATE table SET col = "$v".col FROM "$v" WHERE table.id = "$v".id
 func (b *postgreSQLBackend) renderUpdate(stmt UpdateOp, setChunk, whereChunk [][]any) (string, []any) {
 	b.paramIndex = 0
-
-	tableSQL := stmt.Table
-	if stmt.Schema != "" {
-		tableSQL = stmt.Schema + "." + stmt.Table
-	}
 
 	numColumns := len(stmt.Sets) + len(stmt.Where)
 	b.resetArgsBuffer(len(setChunk) * numColumns)
@@ -444,11 +458,11 @@ func (b *postgreSQLBackend) renderUpdate(stmt UpdateOp, setChunk, whereChunk [][
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	for _, col := range stmt.Where {
 		b.writeString(", ")
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(") AS (VALUES ")
 
@@ -465,9 +479,9 @@ func (b *postgreSQLBackend) renderUpdate(stmt UpdateOp, setChunk, whereChunk [][
 			if idx == 0 {
 				// First row: use COALESCE to infer type from table schema
 				b.writeString("COALESCE((NULL::")
-				b.writeString(tableSQL)
+				b.quoteTable(stmt.Schema, stmt.Table)
 				b.writeString(").")
-				b.writeString(stmt.Sets[j])
+				b.quoteIdentifier(stmt.Sets[j])
 				b.writeString(", $")
 				b.writeString(strconv.Itoa(b.paramIndex))
 				b.writeByte(')')
@@ -484,9 +498,9 @@ func (b *postgreSQLBackend) renderUpdate(stmt UpdateOp, setChunk, whereChunk [][
 			if idx == 0 {
 				// First row: use COALESCE to infer type from table schema
 				b.writeString("COALESCE((NULL::")
-				b.writeString(tableSQL)
+				b.quoteTable(stmt.Schema, stmt.Table)
 				b.writeString(").")
-				b.writeString(stmt.Where[j])
+				b.quoteIdentifier(stmt.Where[j])
 				b.writeString(", $")
 				b.writeString(strconv.Itoa(b.paramIndex))
 				b.writeByte(')')
@@ -502,15 +516,15 @@ func (b *postgreSQLBackend) renderUpdate(stmt UpdateOp, setChunk, whereChunk [][
 	b.writeString(") ")
 
 	b.writeString("UPDATE ")
-	b.writeString(tableSQL)
+	b.quoteTable(stmt.Schema, stmt.Table)
 	b.writeString(" SET ")
 	for i, col := range stmt.Sets {
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 		b.writeString(" = \"$v\".")
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 
 	b.writeString(" FROM \"$v\"")
@@ -520,23 +534,11 @@ func (b *postgreSQLBackend) renderUpdate(stmt UpdateOp, setChunk, whereChunk [][
 		if i > 0 {
 			b.writeString(" AND ")
 		}
-		b.writeString(stmt.Table)
+		b.quoteIdentifier(stmt.Table)
 		b.writeByte('.')
-		b.writeString(col)
+		b.quoteIdentifier(col)
 		b.writeString(" = \"$v\".")
-		b.writeString(col)
-	}
-
-	if len(stmt.Returning) > 0 {
-		b.writeString(" RETURNING ")
-		for i, col := range stmt.Returning {
-			if i > 0 {
-				b.writeString(", ")
-			}
-			b.writeString(stmt.Table)
-			b.writeByte('.')
-			b.writeString(col)
-		}
+		b.quoteIdentifier(col)
 	}
 
 	return b.sqlString(), b.argsBuffer
@@ -551,11 +553,6 @@ func (b *postgreSQLBackend) renderDelete(stmt DeleteOp, chunk [][]any) (string, 
 	numKeyColumns := len(stmt.KeyColumns)
 	b.resetArgsBuffer(len(chunk) * numKeyColumns)
 
-	tableSQL := stmt.FromTable
-	if stmt.FromSchema != "" {
-		tableSQL = stmt.FromSchema + "." + stmt.FromTable
-	}
-
 	b.resetSQLBuffer(512)
 
 	b.writeString("WITH \"$k\" (")
@@ -563,7 +560,7 @@ func (b *postgreSQLBackend) renderDelete(stmt DeleteOp, chunk [][]any) (string, 
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(") AS (VALUES ")
 
@@ -580,9 +577,9 @@ func (b *postgreSQLBackend) renderDelete(stmt DeleteOp, chunk [][]any) (string, 
 			if idx == 0 {
 				// First row: use COALESCE to infer type from table schema
 				b.writeString("COALESCE((NULL::")
-				b.writeString(tableSQL)
+				b.quoteTable(stmt.FromSchema, stmt.FromTable)
 				b.writeString(").")
-				b.writeString(stmt.KeyColumns[j])
+				b.quoteIdentifier(stmt.KeyColumns[j])
 				b.writeString(", $")
 				b.writeString(strconv.Itoa(b.paramIndex))
 				b.writeByte(')')
@@ -598,13 +595,13 @@ func (b *postgreSQLBackend) renderDelete(stmt DeleteOp, chunk [][]any) (string, 
 	b.writeString(") ")
 
 	b.writeString("DELETE FROM ")
-	b.writeString(tableSQL)
+	b.quoteTable(stmt.FromSchema, stmt.FromTable)
 	b.writeString(" WHERE ")
 
 	if numKeyColumns == 1 {
-		b.writeString(stmt.KeyColumns[0])
+		b.quoteIdentifier(stmt.KeyColumns[0])
 		b.writeString(" IN (SELECT ")
-		b.writeString(stmt.KeyColumns[0])
+		b.quoteIdentifier(stmt.KeyColumns[0])
 		b.writeString(" FROM \"$k\")")
 	} else {
 		b.writeByte('(')
@@ -612,14 +609,14 @@ func (b *postgreSQLBackend) renderDelete(stmt DeleteOp, chunk [][]any) (string, 
 			if i > 0 {
 				b.writeString(", ")
 			}
-			b.writeString(col)
+			b.quoteIdentifier(col)
 		}
 		b.writeString(") IN (SELECT ")
 		for i, col := range stmt.KeyColumns {
 			if i > 0 {
 				b.writeString(", ")
 			}
-			b.writeString(col)
+			b.quoteIdentifier(col)
 		}
 		b.writeString(" FROM \"$k\")")
 	}
@@ -663,20 +660,14 @@ func (b *postgreSQLBackend) Insert(ctx context.Context, stmt InsertOp) (Rows, er
 	return b.queryContext(ctx, query, args...)
 }
 
-func (b *postgreSQLBackend) Update(ctx context.Context, stmt UpdateOp) (Rows, error) {
+func (b *postgreSQLBackend) Update(ctx context.Context, stmt UpdateOp) error {
 	if len(stmt.SetValues) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	query, args := b.renderUpdate(stmt, stmt.SetValues, stmt.WhereValues)
-
-	// If no RETURNING clause, use Exec instead of Query
-	if len(stmt.Returning) == 0 {
-		_, err := b.execContext(ctx, query, args...)
-		return nil, err
-	}
-
-	return b.queryContext(ctx, query, args...)
+	_, err := b.execContext(ctx, query, args...)
+	return err
 }
 
 func (b *postgreSQLBackend) Delete(ctx context.Context, stmt DeleteOp) (int64, error) {

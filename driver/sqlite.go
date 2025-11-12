@@ -24,6 +24,10 @@ func newSQLiteBackend(db *sql.DB) Backend {
 	}
 }
 
+func (d *sqliteDriver) Close() error {
+	return d.db.Close()
+}
+
 // resetArgsBuffer resets the argument buffer to length 0, growing capacity if needed.
 // Uses 2x growth factor to reduce reallocation frequency.
 func (b *sqliteBackend) resetArgsBuffer(minCapacity int) {
@@ -51,6 +55,19 @@ func (b *sqliteBackend) writeString(s string) {
 // writeByte appends a byte to the SQL buffer.
 func (b *sqliteBackend) writeByte(c byte) {
 	b.sqlBuffer = append(b.sqlBuffer, c)
+}
+
+// quoteIdentifier quotes a SQL identifier by escaping " as "" and wrapping in "
+func (b *sqliteBackend) quoteIdentifier(identifier string) {
+	b.writeByte('"')
+	for i := 0; i < len(identifier); i++ {
+		if identifier[i] == '"' {
+			b.writeString(`""`)
+		} else {
+			b.writeByte(identifier[i])
+		}
+	}
+	b.writeByte('"')
 }
 
 // sqlString returns the current SQL buffer as a string.
@@ -102,14 +119,14 @@ func (d *sqliteDriver) CreateBackend() Backend {
 func (b *sqliteBackend) renderSQL(sql sqlast.SQL, args *[]any) {
 	switch v := sql.(type) {
 	case sqlast.SQLN:
-		b.writeString(v.Part)
+		b.quoteIdentifier(v.Part)
 	case sqlast.SQLQN:
 		if v.Part1 == "" {
-			b.writeString(v.Part2)
+			b.quoteIdentifier(v.Part2)
 		} else {
-			b.writeString(v.Part1)
+			b.quoteIdentifier(v.Part1)
 			b.writeByte('.')
-			b.writeString(v.Part2)
+			b.quoteIdentifier(v.Part2)
 		}
 	case sqlast.SQLText:
 		b.writeString(v.Text)
@@ -226,12 +243,12 @@ func (b *sqliteBackend) renderSQLQuery(stmt sqlast.SQLQuery) (string, []any) {
 				b.writeString(" DESC")
 			}
 
-			if ob.NullsLast != nil {
-				if *ob.NullsLast {
-					b.writeString(" NULLS LAST")
-				} else {
-					b.writeString(" NULLS FIRST")
-				}
+			// SQLite default: ASC → NULLS FIRST, DESC → NULLS LAST (opposite of PostgreSQL)
+			// Always render NULLS clause to match PostgreSQL/Oracle standard behavior
+			if ob.NullsLast {
+				b.writeString(" NULLS LAST")
+			} else {
+				b.writeString(" NULLS FIRST")
 			}
 		}
 	}
@@ -263,7 +280,7 @@ func (b *sqliteBackend) renderSelect(stmt SelectOp, chunk [][]any) (string, []an
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(") AS (VALUES ")
 
@@ -289,24 +306,24 @@ func (b *sqliteBackend) renderSelect(stmt SelectOp, chunk [][]any) (string, []an
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(stmt.FromTable)
+		b.quoteIdentifier(stmt.FromTable)
 		b.writeByte('.')
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 
 	b.writeString(" FROM ")
-	b.writeString(stmt.FromTable)
+	b.quoteIdentifier(stmt.FromTable)
 
 	b.writeString(" JOIN keys ON ")
 	for j := range stmt.KeyColumns {
 		if j > 0 {
 			b.writeString(" AND ")
 		}
-		b.writeString(stmt.FromTable)
+		b.quoteIdentifier(stmt.FromTable)
 		b.writeByte('.')
-		b.writeString(stmt.KeyColumns[j])
+		b.quoteIdentifier(stmt.KeyColumns[j])
 		b.writeString(" = keys.")
-		b.writeString(stmt.KeyColumns[j])
+		b.quoteIdentifier(stmt.KeyColumns[j])
 	}
 
 	return b.sqlString(), b.argsBuffer
@@ -326,7 +343,7 @@ func (b *sqliteBackend) renderInsert(stmt InsertOp, chunk [][]any) (string, []an
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(") AS (VALUES ")
 
@@ -348,20 +365,20 @@ func (b *sqliteBackend) renderInsert(stmt InsertOp, chunk [][]any) (string, []an
 	b.writeString(") ")
 
 	b.writeString("INSERT INTO ")
-	b.writeString(stmt.IntoTable)
+	b.quoteIdentifier(stmt.IntoTable)
 	b.writeString(" (")
 	for i, col := range stmt.Insert {
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(") SELECT ")
 	for i, col := range stmt.Insert {
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(" FROM new_rows")
 
@@ -371,17 +388,17 @@ func (b *sqliteBackend) renderInsert(stmt InsertOp, chunk [][]any) (string, []an
 			if i > 0 {
 				b.writeString(", ")
 			}
-			b.writeString(col)
+			b.quoteIdentifier(col)
 		}
 	}
 
 	return b.sqlString(), b.argsBuffer
 }
 
-// renderUpdate renders a CTE-based UPDATE FROM pattern with RETURNING
+// renderUpdate renders a CTE-based UPDATE FROM pattern
 // Query format: WITH new_values (id, name, email) AS (VALUES (?,?,?), (?,?,?))
 //
-//	UPDATE table SET name = new_values.name FROM new_values WHERE table.id = new_values.id RETURNING ...
+//	UPDATE table SET name = new_values.name FROM new_values WHERE table.id = new_values.id
 func (b *sqliteBackend) renderUpdate(stmt UpdateOp, setChunk, whereChunk [][]any) (string, []any) {
 	b.paramIndex = 0
 
@@ -395,11 +412,11 @@ func (b *sqliteBackend) renderUpdate(stmt UpdateOp, setChunk, whereChunk [][]any
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	for _, col := range stmt.Where {
 		b.writeString(", ")
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(") AS (VALUES ")
 
@@ -427,15 +444,15 @@ func (b *sqliteBackend) renderUpdate(stmt UpdateOp, setChunk, whereChunk [][]any
 	b.writeString(") ")
 
 	b.writeString("UPDATE ")
-	b.writeString(stmt.Table)
+	b.quoteIdentifier(stmt.Table)
 	b.writeString(" SET ")
 	for i, col := range stmt.Sets {
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 		b.writeString(" = new_values.")
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 
 	b.writeString(" FROM new_values")
@@ -445,21 +462,11 @@ func (b *sqliteBackend) renderUpdate(stmt UpdateOp, setChunk, whereChunk [][]any
 		if i > 0 {
 			b.writeString(" AND ")
 		}
-		b.writeString(stmt.Table)
+		b.quoteIdentifier(stmt.Table)
 		b.writeByte('.')
-		b.writeString(col)
+		b.quoteIdentifier(col)
 		b.writeString(" = new_values.")
-		b.writeString(col)
-	}
-
-	if len(stmt.Returning) > 0 {
-		b.writeString(" RETURNING ")
-		for i, col := range stmt.Returning {
-			if i > 0 {
-				b.writeString(", ")
-			}
-			b.writeString(col)
-		}
+		b.quoteIdentifier(col)
 	}
 
 	return b.sqlString(), b.argsBuffer
@@ -479,7 +486,7 @@ func (b *sqliteBackend) renderDelete(stmt DeleteOp, chunk [][]any) (string, []an
 		if i > 0 {
 			b.writeString(", ")
 		}
-		b.writeString(col)
+		b.quoteIdentifier(col)
 	}
 	b.writeString(") AS (VALUES ")
 
@@ -501,13 +508,13 @@ func (b *sqliteBackend) renderDelete(stmt DeleteOp, chunk [][]any) (string, []an
 	b.writeString(") ")
 
 	b.writeString("DELETE FROM ")
-	b.writeString(stmt.FromTable)
+	b.quoteIdentifier(stmt.FromTable)
 	b.writeString(" WHERE ")
 
 	if numKeyColumns == 1 {
-		b.writeString(stmt.KeyColumns[0])
+		b.quoteIdentifier(stmt.KeyColumns[0])
 		b.writeString(" IN (SELECT ")
-		b.writeString(stmt.KeyColumns[0])
+		b.quoteIdentifier(stmt.KeyColumns[0])
 		b.writeString(" FROM keys)")
 	} else {
 		b.writeByte('(')
@@ -515,14 +522,14 @@ func (b *sqliteBackend) renderDelete(stmt DeleteOp, chunk [][]any) (string, []an
 			if i > 0 {
 				b.writeString(", ")
 			}
-			b.writeString(col)
+			b.quoteIdentifier(col)
 		}
 		b.writeString(") IN (SELECT ")
 		for i, col := range stmt.KeyColumns {
 			if i > 0 {
 				b.writeString(", ")
 			}
-			b.writeString(col)
+			b.quoteIdentifier(col)
 		}
 		b.writeString(" FROM keys)")
 	}
@@ -566,20 +573,14 @@ func (b *sqliteBackend) Insert(ctx context.Context, stmt InsertOp) (Rows, error)
 	return b.queryContext(ctx, query, args...)
 }
 
-func (b *sqliteBackend) Update(ctx context.Context, stmt UpdateOp) (Rows, error) {
+func (b *sqliteBackend) Update(ctx context.Context, stmt UpdateOp) error {
 	if len(stmt.SetValues) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	query, args := b.renderUpdate(stmt, stmt.SetValues, stmt.WhereValues)
-
-	// If no RETURNING clause, use Exec instead of Query
-	if len(stmt.Returning) == 0 {
-		_, err := b.execContext(ctx, query, args...)
-		return nil, err
-	}
-
-	return b.queryContext(ctx, query, args...)
+	_, err := b.execContext(ctx, query, args...)
+	return err
 }
 
 func (b *sqliteBackend) Delete(ctx context.Context, stmt DeleteOp) (int64, error) {

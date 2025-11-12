@@ -419,6 +419,8 @@ func (s *Session) insert(ctx context.Context, em *mapping.EntityMapping, entitie
 	}
 	defer rows.Close()
 
+	// INSERT always has RETURNING (primary key + auto fields)
+	// Scan all returned values and mark entities as persisted
 	result := make([]any, 0, len(entities))
 	i := 0
 	for rows.Next() {
@@ -462,38 +464,11 @@ func (s *Session) update(ctx context.Context, em *mapping.EntityMapping, entitie
 		Table:       em.Table,
 		Sets:        em.UpdatableColumns(),
 		Where:       em.PrimaryColumns(),
-		Returning:   em.UpdateReturningColumns(),
 		SetValues:   setValues,
 		WhereValues: whereValues,
 	}
 
-	rows, err := s.backend.Update(ctx, updateStmt)
-	if err != nil {
-		return err
-	}
-	if rows == nil {
-		return nil
-	}
-	defer rows.Close()
-
-	// Scan RETURNING values back into existing entities
-	// Skip if no fields need to be returned
-	updateReturning := em.UpdateReturning()
-	if len(updateReturning) == 0 {
-		return nil
-	}
-
-	i := 0
-	for rows.Next() {
-		if i >= len(entities) {
-			return fmt.Errorf("more rows than entities")
-		}
-		if err := s.scanEntity(em, entities[i], rows, updateReturning); err != nil {
-			return err
-		}
-		i++
-	}
-	return nil
+	return s.backend.Update(ctx, updateStmt)
 }
 
 func (s *Session) delete(ctx context.Context, em *mapping.EntityMapping, entities []any) error {

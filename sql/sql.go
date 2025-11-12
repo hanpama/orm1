@@ -77,11 +77,12 @@ type Join struct {
 }
 
 // OrderBy represents a SQL ORDER BY clause with direction and NULL handling.
-// NullsLast is optional: nil means no NULLS clause, true means NULLS LAST, false means NULLS FIRST.
+// NullsLast: true means NULLS LAST, false means NULLS FIRST.
+// Always set to ensure consistent behavior across databases (PostgreSQL/Oracle standard).
 type OrderBy struct {
 	Expr      SQL
 	Ascending bool
-	NullsLast *bool
+	NullsLast bool
 }
 
 // SQLQuery represents a complex SELECT query with joins, conditions, and ordering.
