@@ -71,7 +71,7 @@ func Example_quickStart() {
 
 	// Setup: Create an order with items
 	setupSession := factory.CreateSession()
-	setupSession.Begin(context.Background())
+	setupTx, _ := setupSession.Begin(context.Background(), nil)
 	order := &Order{
 		CustomerID: 1,
 		Total:      99.99,
@@ -80,18 +80,18 @@ func Example_quickStart() {
 		},
 	}
 	setupSession.Save(context.Background(), order)
-	setupSession.Commit(context.Background())
+	setupTx.Commit(context.Background())
 
 	// 3. Use in your application
 	session := factory.CreateSession()
 	ctx := context.Background()
 
 	// Start a transaction
-	if err := session.Begin(ctx); err != nil {
+	tx, err := session.Begin(ctx, nil); if err != nil {
 		return
 	}
 	// Defer rollback in case of error or panic
-	defer session.Rollback(ctx)
+	defer tx.Rollback(ctx)
 
 	// Load an aggregate root; children are loaded automatically
 	var loadedOrder *Order
@@ -116,7 +116,7 @@ func Example_quickStart() {
 	}
 
 	// Commit the transaction
-	if err := session.Commit(ctx); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return
 	}
 
@@ -152,15 +152,15 @@ func Example_aggregateSupport() {
 
 	// Setup: Create a post
 	setupSession := factory.CreateSession()
-	setupSession.Begin(context.Background())
+	setupTx, _ := setupSession.Begin(context.Background(), nil)
 	post := &Post{Title: "Hello World"}
 	setupSession.Save(context.Background(), post)
-	setupSession.Commit(context.Background())
+	setupTx.Commit(context.Background())
 
 	session := factory.CreateSession()
 	ctx := context.Background()
-	session.Begin(ctx)
-	defer session.Rollback(ctx)
+	tx, _ := session.Begin(ctx, nil)
+	defer tx.Rollback(ctx)
 
 	// Load post with all comments
 	var loadedPost *Post
@@ -175,7 +175,7 @@ func Example_aggregateSupport() {
 	if err := session.Save(ctx, loadedPost); err != nil {
 		return
 	}
-	if err := session.Commit(ctx); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return
 	}
 

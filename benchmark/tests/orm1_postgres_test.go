@@ -241,7 +241,7 @@ func BenchmarkORM1_Postgres_Aggregate_Insert(b *testing.B) {
 		session := factory.CreateSession()
 
 		// Use transaction for atomic insert
-		if err := session.Begin(ctx); err != nil {
+		tx, err := session.Begin(ctx, nil); if err != nil {
 			b.Fatal(err)
 		}
 
@@ -260,11 +260,11 @@ func BenchmarkORM1_Postgres_Aggregate_Insert(b *testing.B) {
 		}
 
 		if err := session.Save(ctx, order); err != nil {
-			session.Rollback(ctx)
+			tx.Rollback(ctx)
 			b.Fatal(err)
 		}
 
-		if err := session.Commit(ctx); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -394,16 +394,16 @@ func BenchmarkORM1_Postgres_Aggregate_Update(b *testing.B) {
 			order.Items[2].Price = 124.98
 
 			// Use transaction for atomic update
-			if err := session.Begin(ctx); err != nil {
+			tx, err := session.Begin(ctx, nil); if err != nil {
 				b.Fatal(err)
 			}
 
 			if err := session.Save(ctx, order); err != nil {
-				session.Rollback(ctx)
+				tx.Rollback(ctx)
 				b.Fatal(err)
 			}
 
-			if err := session.Commit(ctx); err != nil {
+			if err := tx.Commit(ctx); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -477,16 +477,16 @@ func BenchmarkORM1_Postgres_Aggregate_Delete(b *testing.B) {
 		b.StartTimer()
 
 		// Use transaction for atomic delete
-		if err := session.Begin(ctx); err != nil {
+		tx, err := session.Begin(ctx, nil); if err != nil {
 			b.Fatal(err)
 		}
 
 		if err := session.Delete(ctx, order); err != nil {
-			session.Rollback(ctx)
+			tx.Rollback(ctx)
 			b.Fatal(err)
 		}
 
-		if err := session.Commit(ctx); err != nil {
+		if err := tx.Commit(ctx); err != nil {
 			b.Fatal(err)
 		}
 	}

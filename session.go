@@ -93,6 +93,12 @@ type childrenKey struct {
 	child  *mapping.Child // Child metadata pointer
 }
 
+// txState represents the state of persisted entities and children at a transaction boundary.
+type txState struct {
+	persisted map[any]struct{}
+	children  map[childrenKey][]any
+}
+
 // Session manages database operations and tracks entity state.
 // It tracks which entities have been persisted to the database, enabling Save to
 // determine whether to INSERT (for new entities) or UPDATE (for persisted entities).
@@ -104,6 +110,8 @@ type Session struct {
 
 	persisted map[any]struct{}      // entity pointer → persisted in DB
 	children  map[childrenKey][]any // (parent ptr, child meta) → children
+
+	txStack []txState // Stack of transaction states for nested transactions
 }
 
 // newSession creates a new Session with the given backend and mappings.

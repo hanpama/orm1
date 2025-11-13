@@ -728,7 +728,23 @@ func (b *postgreSQLBackend) ExecRaw(ctx context.Context, fragment sqlast.SQL) (i
 }
 
 func (b *postgreSQLBackend) Begin(ctx context.Context) error {
-	tx, err := b.db.BeginTx(ctx, nil)
+	return b.BeginTx(ctx, nil)
+}
+
+func (b *postgreSQLBackend) BeginTx(ctx context.Context, opts *TxOptions) error {
+	// Default to READ COMMITTED if no options specified
+	sqlOpts := &sql.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+	}
+
+	if opts != nil {
+		if opts.Isolation != LevelDefault {
+			sqlOpts.Isolation = convertToSQLIsolationLevel(opts.Isolation)
+		}
+		sqlOpts.ReadOnly = opts.ReadOnly
+	}
+
+	tx, err := b.db.BeginTx(ctx, sqlOpts)
 	if err != nil {
 		return err
 	}
@@ -751,5 +767,32 @@ func (b *postgreSQLBackend) Rollback(ctx context.Context) error {
 	}
 	err := b.tx.Rollback()
 	b.tx = nil
+	return err
+}
+
+func (b *postgreSQLBackend) Savepoint(ctx context.Context, name string) error {
+	if b.tx == nil {
+		return fmt.Errorf("no transaction to create savepoint")
+	}
+	query := fmt.Sprintf("SAVEPOINT %s", name)
+	_, err := b.tx.ExecContext(ctx, query)
+	return err
+}
+
+func (b *postgreSQLBackend) ReleaseSavepoint(ctx context.Context, name string) error {
+	if b.tx == nil {
+		return fmt.Errorf("no transaction to release savepoint")
+	}
+	query := fmt.Sprintf("RELEASE SAVEPOINT %s", name)
+	_, err := b.tx.ExecContext(ctx, query)
+	return err
+}
+
+func (b *postgreSQLBackend) RollbackToSavepoint(ctx context.Context, name string) error {
+	if b.tx == nil {
+		return fmt.Errorf("no transaction to rollback savepoint")
+	}
+	query := fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", name)
+	_, err := b.tx.ExecContext(ctx, query)
 	return err
 }
