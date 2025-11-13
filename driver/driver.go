@@ -7,9 +7,55 @@ package driver
 
 import (
 	"context"
+	"database/sql"
 
-	"github.com/hanpama/orm1/sql"
+	sqlast "github.com/hanpama/orm1/sql"
 )
+
+// IsolationLevel represents the isolation level for a transaction.
+// Re-exported from orm1 package to avoid circular dependencies.
+type IsolationLevel int
+
+const (
+	LevelDefault IsolationLevel = iota
+	LevelReadUncommitted
+	LevelReadCommitted
+	LevelWriteCommitted
+	LevelRepeatableRead
+	LevelSnapshot
+	LevelSerializable
+	LevelLinearizable
+)
+
+// TxOptions holds transaction options for BeginTx.
+type TxOptions struct {
+	Isolation IsolationLevel
+	ReadOnly  bool
+}
+
+// convertToSQLIsolationLevel converts driver.IsolationLevel to sql.IsolationLevel
+func convertToSQLIsolationLevel(level IsolationLevel) sql.IsolationLevel {
+	switch level {
+	case LevelDefault:
+		return sql.LevelDefault
+	case LevelReadUncommitted:
+		return sql.LevelReadUncommitted
+	case LevelReadCommitted:
+		return sql.LevelReadCommitted
+	case LevelWriteCommitted:
+		return sql.LevelWriteCommitted
+	case LevelRepeatableRead:
+		return sql.LevelRepeatableRead
+	case LevelSnapshot:
+		return sql.LevelSnapshot
+	case LevelSerializable:
+		return sql.LevelSerializable
+	case LevelLinearizable:
+		return sql.LevelLinearizable
+	default:
+		return sql.LevelDefault
+	}
+}
 
 // Rows is the interface for iterating over query results.
 type Rows interface {
@@ -44,15 +90,21 @@ type Backend interface {
 	Delete(ctx context.Context, op DeleteOp) (int64, error)
 
 	// Complex query operations (uses SQL AST)
-	FetchQuery(ctx context.Context, stmt sql.SQLQuery) (Rows, error)
-	CountQuery(ctx context.Context, stmt sql.SQLQuery) (int64, error)
+	FetchQuery(ctx context.Context, stmt sqlast.SQLQuery) (Rows, error)
+	CountQuery(ctx context.Context, stmt sqlast.SQLQuery) (int64, error)
 
 	// Raw SQL operations (uses SQL AST)
-	FetchRaw(ctx context.Context, fragment sql.SQL) (Rows, error)
-	ExecRaw(ctx context.Context, fragment sql.SQL) (int64, error)
+	FetchRaw(ctx context.Context, fragment sqlast.SQL) (Rows, error)
+	ExecRaw(ctx context.Context, fragment sqlast.SQL) (int64, error)
 
 	// Transaction control
 	Begin(ctx context.Context) error
+	BeginTx(ctx context.Context, opts *TxOptions) error
 	Commit(ctx context.Context) error
 	Rollback(ctx context.Context) error
+
+	// Nested transaction control (SAVEPOINT support)
+	Savepoint(ctx context.Context, name string) error
+	ReleaseSavepoint(ctx context.Context, name string) error
+	RollbackToSavepoint(ctx context.Context, name string) error
 }

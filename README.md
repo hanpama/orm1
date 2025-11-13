@@ -52,11 +52,12 @@ factory.SetDriver(orm1.NewPostgreSQLDriver(db))
 session := factory.CreateSession()
 
 // Start a transaction
-if err := session.Begin(ctx); err != nil {
+tx, err := session.Begin(ctx, nil)
+if err != nil {
     log.Fatal(err)
 }
 // Defer rollback in case of error or panic
-defer session.Rollback(ctx)
+defer tx.Rollback(ctx)
 
 // Load an aggregate root; children are loaded automatically
 var order *Order
@@ -77,11 +78,11 @@ order.Items = append(order.Items, &OrderItem{ // Add a new child
 // (updates Order, inserts new OrderItem)
 if err := session.Save(ctx, order); err != nil {
     // Rollback will be triggered by the defer
-    log.Fatal(err)
+    return
 }
 
 // Commit the transaction
-if err := session.Commit(ctx); err != nil {
+if err := tx.Commit(ctx); err != nil {
     log.Fatal(err)
 }
 ```

@@ -641,7 +641,20 @@ func (b *sqliteBackend) ExecRaw(ctx context.Context, fragment sqlast.SQL) (int64
 }
 
 func (b *sqliteBackend) Begin(ctx context.Context) error {
-	tx, err := b.db.BeginTx(ctx, nil)
+	return b.BeginTx(ctx, nil)
+}
+
+func (b *sqliteBackend) BeginTx(ctx context.Context, opts *TxOptions) error {
+	// SQLite only supports SERIALIZABLE isolation level
+	// ReadOnly is not enforced by SQLite
+	var sqlOpts *sql.TxOptions
+	if opts != nil {
+		sqlOpts = &sql.TxOptions{
+			Isolation: convertToSQLIsolationLevel(opts.Isolation),
+			ReadOnly:  opts.ReadOnly,
+		}
+	}
+	tx, err := b.db.BeginTx(ctx, sqlOpts)
 	if err != nil {
 		return err
 	}
@@ -664,5 +677,32 @@ func (b *sqliteBackend) Rollback(ctx context.Context) error {
 	}
 	err := b.tx.Rollback()
 	b.tx = nil
+	return err
+}
+
+func (b *sqliteBackend) Savepoint(ctx context.Context, name string) error {
+	if b.tx == nil {
+		return fmt.Errorf("no transaction to create savepoint")
+	}
+	query := fmt.Sprintf("SAVEPOINT %s", name)
+	_, err := b.tx.ExecContext(ctx, query)
+	return err
+}
+
+func (b *sqliteBackend) ReleaseSavepoint(ctx context.Context, name string) error {
+	if b.tx == nil {
+		return fmt.Errorf("no transaction to release savepoint")
+	}
+	query := fmt.Sprintf("RELEASE SAVEPOINT %s", name)
+	_, err := b.tx.ExecContext(ctx, query)
+	return err
+}
+
+func (b *sqliteBackend) RollbackToSavepoint(ctx context.Context, name string) error {
+	if b.tx == nil {
+		return fmt.Errorf("no transaction to rollback savepoint")
+	}
+	query := fmt.Sprintf("ROLLBACK TO SAVEPOINT %s", name)
+	_, err := b.tx.ExecContext(ctx, query)
 	return err
 }
