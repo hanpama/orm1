@@ -1,5 +1,7 @@
 # orm1
 
+[![codecov](https://codecov.io/gh/hanpama/orm1/branch/main/graph/badge.svg)](https://codecov.io/gh/hanpama/orm1)
+
 A lightweight, high-performance ORM for Go, designed to cleanly persist plain Go structs and support Domain-Driven Design.
 
 ## Why orm1?
