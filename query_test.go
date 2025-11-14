@@ -18,8 +18,9 @@ func TestQueryFetchAll(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			registry := orm1.NewRegistry()
+			registry.Register(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -66,8 +67,9 @@ func TestQueryFetchOne(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			registry := orm1.NewRegistry()
+			registry.Register(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -116,8 +118,9 @@ func TestQueryFetchOneEmpty(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			registry := orm1.NewRegistry()
+			registry.Register(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Test FetchOne with no results
@@ -145,8 +148,9 @@ func TestQueryFetchMany(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			registry := orm1.NewRegistry()
+			registry.Register(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data with different IDs (auto-generated, ordered by insertion)
@@ -200,8 +204,9 @@ func TestQueryWhere(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			registry := orm1.NewRegistry()
+			registry.Register(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -253,8 +258,9 @@ func TestQueryOrderBy(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			registry := orm1.NewRegistry()
+			registry.Register(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data (names in non-alphabetical order)
@@ -323,8 +329,9 @@ func TestQueryLimitOffset(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			registry := orm1.NewRegistry()
+			registry.Register(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data (5 entities)
@@ -418,9 +425,10 @@ func TestQueryJoin(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&Purchase{}, orm1.WithTable("purchase"))
-			factory.RegisterEntity(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			registry := orm1.NewRegistry()
+			registry.Register(&Purchase{}, orm1.WithTable("purchase"))
+			registry.Register(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -499,9 +507,10 @@ func TestQueryLeftJoin(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&Purchase{}, orm1.WithTable("purchase"))
-			factory.RegisterEntity(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			registry := orm1.NewRegistry()
+			registry.Register(&Purchase{}, orm1.WithTable("purchase"))
+			registry.Register(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -567,8 +576,9 @@ func TestQueryCount(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			registry := orm1.NewRegistry()
+			registry.Register(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -627,9 +637,10 @@ func TestQueryHaving(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&Purchase{}, orm1.WithTable("purchase"))
-			factory.RegisterEntity(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			registry := orm1.NewRegistry()
+			registry.Register(&Purchase{}, orm1.WithTable("purchase"))
+			registry.Register(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data

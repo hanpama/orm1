@@ -25,7 +25,8 @@ func TestRawQueryScanAll(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data using raw query
@@ -79,7 +80,8 @@ func TestRawQueryScanOne(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -122,7 +124,8 @@ func TestRawQueryScanOneEmpty(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Test ScanOne with no results
@@ -152,7 +155,8 @@ func TestRawQueryMultipleParams(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -200,7 +204,8 @@ func TestRawQueryWithNullValues(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data with NULL nullable
@@ -250,7 +255,8 @@ func TestRawQueryRows(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -307,7 +313,8 @@ func TestRawQueryExec(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -358,7 +365,8 @@ func TestRawQueryExecDelete(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert test data
@@ -409,7 +417,8 @@ func TestRawQueryExecInsert(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Test INSERT with Exec (use ? placeholders for all backends)

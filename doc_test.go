@@ -65,9 +65,10 @@ func Example_quickStart() {
 	)`)
 
 	// 2. Register entities and create factory
-	factory := orm1.NewSessionFactoryWithDriver(driver.NewSQLite(db))
-	factory.RegisterEntity(&Order{}, orm1.WithTable("orders"))
-	factory.RegisterEntity(&OrderItem{}, orm1.WithTable("order_items"))
+	registry := orm1.NewRegistry()
+	registry.Register(&Order{}, orm1.WithTable("orders"))
+	registry.Register(&OrderItem{}, orm1.WithTable("order_items"))
+	factory := orm1.NewSessionFactory(registry, driver.NewSQLite(db))
 
 	// Setup: Create an order with items
 	setupSession := factory.CreateSession()
@@ -146,9 +147,10 @@ func Example_aggregateSupport() {
 		text TEXT
 	)`)
 
-	factory := orm1.NewSessionFactoryWithDriver(driver.NewSQLite(db))
-	factory.RegisterEntity(&Post{}, orm1.WithTable("posts"))
-	factory.RegisterEntity(&Comment{}, orm1.WithTable("comments"))
+	registry := orm1.NewRegistry()
+	registry.Register(&Post{}, orm1.WithTable("posts"))
+	registry.Register(&Comment{}, orm1.WithTable("comments"))
+	factory := orm1.NewSessionFactory(registry, driver.NewSQLite(db))
 
 	// Setup: Create a post
 	setupSession := factory.CreateSession()
@@ -202,8 +204,9 @@ func Example_typeSafeQueries() {
 	)`)
 	db.Exec(`INSERT INTO users (age) VALUES (25), (30), (15)`)
 
-	factory := orm1.NewSessionFactoryWithDriver(driver.NewSQLite(db))
-	factory.RegisterEntity(&User{}, orm1.WithTable("users"))
+	registry := orm1.NewRegistry()
+	registry.Register(&User{}, orm1.WithTable("users"))
+	factory := orm1.NewSessionFactory(registry, driver.NewSQLite(db))
 
 	session := factory.CreateSession()
 	ctx := context.Background()
@@ -240,7 +243,8 @@ func Example_rawSQL() {
 		('Food', 30.00),
 		('Transport', 20.00)`)
 
-	factory := orm1.NewSessionFactoryWithDriver(driver.NewSQLite(db))
+	registry := orm1.NewRegistry()
+	factory := orm1.NewSessionFactory(registry, driver.NewSQLite(db))
 
 	session := factory.CreateSession()
 	ctx := context.Background()

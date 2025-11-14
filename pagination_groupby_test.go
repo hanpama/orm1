@@ -71,9 +71,10 @@ func TestPaginationGroupByForward(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&Purchase{}, orm1.WithTable("purchase"))
-			factory.RegisterEntity(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			registry := orm1.NewRegistry()
+			registry.Register(&Purchase{}, orm1.WithTable("purchase"))
+			registry.Register(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertPurchaseGroupByTestData(ctx, session); err != nil {
@@ -137,9 +138,10 @@ func TestPaginationGroupByBackward(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&Purchase{}, orm1.WithTable("purchase"))
-			factory.RegisterEntity(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			registry := orm1.NewRegistry()
+			registry.Register(&Purchase{}, orm1.WithTable("purchase"))
+			registry.Register(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertPurchaseGroupByTestData(ctx, session); err != nil {
@@ -201,9 +203,10 @@ func TestPaginationGroupByMultiplePages(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&Purchase{}, orm1.WithTable("purchase"))
-			factory.RegisterEntity(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			registry := orm1.NewRegistry()
+			registry.Register(&Purchase{}, orm1.WithTable("purchase"))
+			registry.Register(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Insert 6 purchases with 2+ line items each
@@ -312,9 +315,10 @@ func TestPaginationGroupByDescOrder(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&Purchase{}, orm1.WithTable("purchase"))
-			factory.RegisterEntity(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			registry := orm1.NewRegistry()
+			registry.Register(&Purchase{}, orm1.WithTable("purchase"))
+			registry.Register(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertPurchaseGroupByTestData(ctx, session); err != nil {

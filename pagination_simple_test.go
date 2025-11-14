@@ -49,8 +49,9 @@ func TestPaginationSimpleAscForwardNullsLast(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -125,8 +126,9 @@ func TestPaginationSimpleAscBackwardNullsLast(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -200,8 +202,9 @@ func TestPaginationSimpleAscForwardNullsFirst(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -243,8 +246,9 @@ func TestPaginationSimpleDescForwardNullsLast(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -286,8 +290,9 @@ func TestPaginationSimpleAscBackwardNullsFirst(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -345,8 +350,9 @@ func TestPaginationSimpleDescBackwardNullsLast(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -404,8 +410,9 @@ func TestPaginationSimpleDescForwardNullsFirst(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -463,8 +470,9 @@ func TestPaginationSimpleDescBackwardNullsFirst(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -527,8 +535,9 @@ func TestPaginationSimpleAscDefaultNulls(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -588,8 +597,9 @@ func TestPaginationSimpleDescDefaultNulls(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -648,8 +658,9 @@ func TestPaginationSimpleAscBackwardDefaultNulls(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
@@ -707,8 +718,9 @@ func TestPaginationSimpleDescBackwardDefaultNulls(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			if err := insertBlogPostTestData(ctx, session); err != nil {
