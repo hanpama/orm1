@@ -140,3 +140,32 @@ func TestAnalyzeStruct(t *testing.T) {
 		t.Errorf("AnalyzeStruct() mismatch (-want +got):\n%s", diff)
 	}
 }
+
+// TestAnalyzeStruct_NonStruct tests AnalyzeStruct with non-struct type
+func TestAnalyzeStruct_NonStruct(t *testing.T) {
+	result := mapping.AnalyzeStruct(reflect.TypeOf(42))
+	if result != nil {
+		t.Errorf("AnalyzeStruct(int) should return nil, got %v", result)
+	}
+}
+
+// TestAnalyzeStruct_EmptyStruct tests AnalyzeStruct with empty struct
+func TestAnalyzeStruct_EmptyStruct(t *testing.T) {
+	type Empty struct{}
+	result := mapping.AnalyzeStruct(reflect.TypeOf(Empty{}))
+	if len(result) != 0 {
+		t.Errorf("AnalyzeStruct(Empty{}) should return empty slice, got %d fields", len(result))
+	}
+}
+
+// TestAnalyzeStruct_UnexportedOnly tests AnalyzeStruct with only unexported fields
+func TestAnalyzeStruct_UnexportedOnly(t *testing.T) {
+	type OnlyUnexported struct {
+		unexported1 string
+		unexported2 int
+	}
+	result := mapping.AnalyzeStruct(reflect.TypeOf(OnlyUnexported{}))
+	if len(result) != 0 {
+		t.Errorf("AnalyzeStruct with only unexported fields should return empty slice, got %d fields", len(result))
+	}
+}

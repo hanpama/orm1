@@ -507,7 +507,7 @@ func (s *Session) delete(ctx context.Context, em *mapping.EntityMapping, entitie
 		Keys:       keys,
 	}
 
-	_, err := s.backend.Delete(ctx, deleteStmt)
+	err := s.backend.Delete(ctx, deleteStmt)
 	if err != nil {
 		return err
 	}
