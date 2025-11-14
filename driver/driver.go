@@ -8,6 +8,7 @@ package driver
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	sqlast "github.com/hanpama/orm1/sql"
 )
@@ -53,7 +54,7 @@ func convertToSQLIsolationLevel(level IsolationLevel) sql.IsolationLevel {
 	case LevelLinearizable:
 		return sql.LevelLinearizable
 	default:
-		return sql.LevelDefault
+		panic(fmt.Sprintf("invalid isolation level: %d", level))
 	}
 }
 
@@ -64,6 +65,15 @@ type Rows interface {
 	Close() error
 	Columns() ([]string, error)
 }
+
+// emptyRows is a Rows implementation that returns no results.
+// Used when operations are called with empty input (e.g., Select with no keys).
+type emptyRows struct{}
+
+func (e *emptyRows) Next() bool                 { return false }
+func (e *emptyRows) Scan(dest ...any) error     { return nil }
+func (e *emptyRows) Close() error               { return nil }
+func (e *emptyRows) Columns() ([]string, error) { return nil, nil }
 
 // Driver creates Backend instances for each session.
 // Implementations must create a new backend instance per call to CreateBackend,
@@ -87,7 +97,7 @@ type Backend interface {
 	Select(ctx context.Context, op SelectOp) (Rows, error)
 	Insert(ctx context.Context, op InsertOp) (Rows, error)
 	Update(ctx context.Context, op UpdateOp) error
-	Delete(ctx context.Context, op DeleteOp) (int64, error)
+	Delete(ctx context.Context, op DeleteOp) error
 
 	// Complex query operations (uses SQL AST)
 	FetchQuery(ctx context.Context, stmt sqlast.SQLQuery) (Rows, error)

@@ -548,9 +548,9 @@ func (b *sqliteBackend) renderRawSQL(fragment sqlast.SQL) (string, []any) {
 
 func (b *sqliteBackend) Select(ctx context.Context, stmt SelectOp) (Rows, error) {
 	if len(stmt.Keys) == 0 {
-		return nil, nil
+		// Return empty result set for empty keys
+		return &emptyRows{}, nil
 	}
-
 	// Convert Keys to [][]any for rendering
 	values := make([][]any, len(stmt.Keys))
 	for i, k := range stmt.Keys {
@@ -566,28 +566,28 @@ func (b *sqliteBackend) Select(ctx context.Context, stmt SelectOp) (Rows, error)
 
 func (b *sqliteBackend) Insert(ctx context.Context, stmt InsertOp) (Rows, error) {
 	if len(stmt.Values) == 0 {
-		return nil, nil
+		// Return empty result set for empty batch
+		return &emptyRows{}, nil
 	}
-
 	query, args := b.renderInsert(stmt, stmt.Values)
 	return b.queryContext(ctx, query, args...)
 }
 
 func (b *sqliteBackend) Update(ctx context.Context, stmt UpdateOp) error {
 	if len(stmt.SetValues) == 0 {
+		// No-op for empty batch
 		return nil
 	}
-
 	query, args := b.renderUpdate(stmt, stmt.SetValues, stmt.WhereValues)
 	_, err := b.execContext(ctx, query, args...)
 	return err
 }
 
-func (b *sqliteBackend) Delete(ctx context.Context, stmt DeleteOp) (int64, error) {
+func (b *sqliteBackend) Delete(ctx context.Context, stmt DeleteOp) error {
 	if len(stmt.Keys) == 0 {
-		return 0, nil
+		// No-op for empty batch
+		return nil
 	}
-
 	// Convert Keys to [][]any for rendering
 	values := make([][]any, len(stmt.Keys))
 	for i, k := range stmt.Keys {
@@ -599,12 +599,8 @@ func (b *sqliteBackend) Delete(ctx context.Context, stmt DeleteOp) (int64, error
 
 	query, args := b.renderDelete(stmt, values)
 
-	result, err := b.execContext(ctx, query, args...)
-	if err != nil {
-		return 0, err
-	}
-	affected, _ := result.RowsAffected()
-	return affected, nil
+	_, err := b.execContext(ctx, query, args...)
+	return err
 }
 
 func (b *sqliteBackend) FetchQuery(ctx context.Context, stmt sqlast.SQLQuery) (Rows, error) {
