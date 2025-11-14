@@ -267,3 +267,303 @@ func TestMappingBuilder_Child(t *testing.T) {
 		t.Error("Children should be in ChildMap")
 	}
 }
+
+// TestRegister_PanicOnNonStruct tests Register panics when given non-struct type
+func TestRegister_PanicOnNonStruct(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic when registering non-struct type")
+		}
+	}()
+
+	builder := mapping.NewEntityMappingBuilder()
+	// Try to register int type (not a struct)
+	builder.Register(reflect.TypeOf(42))
+}
+
+// TestBuild_Idempotent tests that Build() can be called multiple times
+func TestBuild_Idempotent(t *testing.T) {
+	type User struct {
+		ID int64 `orm1:"primary"`
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(reflect.TypeOf(User{}))
+
+	mappings1 := builder.Build()
+	mappings2 := builder.Build()
+
+	// Should return same result
+	if len(mappings1) != len(mappings2) {
+		t.Errorf("Build() returned different number of mappings on second call")
+	}
+
+	// Should be same map reference
+	em1 := mappings1[reflect.TypeOf(User{})]
+	em2 := mappings2[reflect.TypeOf(User{})]
+
+	if em1 != em2 {
+		t.Errorf("Build() returned different mapping instances")
+	}
+}
+
+// TestGetMapping_BeforeBuild tests GetMapping returns nil before Build
+func TestGetMapping_BeforeBuild(t *testing.T) {
+	type User struct {
+		ID int64 `orm1:"primary"`
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(reflect.TypeOf(User{}))
+
+	// GetMapping before Build should return nil
+	result := builder.GetMapping(reflect.TypeOf(User{}))
+
+	if result != nil {
+		t.Errorf("GetMapping() before Build() should return nil, got %v", result)
+	}
+}
+
+// TestGetMapping_AfterBuild tests GetMapping returns mapping after Build
+func TestGetMapping_AfterBuild(t *testing.T) {
+	type User struct {
+		ID int64 `orm1:"primary"`
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(reflect.TypeOf(User{}))
+	builder.Build()
+
+	// GetMapping after Build should return mapping
+	result := builder.GetMapping(reflect.TypeOf(User{}))
+
+	if result == nil {
+		t.Error("GetMapping() after Build() should return mapping")
+	}
+}
+
+// TestWithSchema tests WithSchema option
+func TestWithSchema(t *testing.T) {
+	type User struct {
+		ID int64 `orm1:"primary"`
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(reflect.TypeOf(User{}), mapping.WithSchema("public"))
+	mappings := builder.Build()
+
+	em := mappings[reflect.TypeOf(User{})]
+
+	if em.Schema != "public" {
+		t.Errorf("Schema = %q, want 'public'", em.Schema)
+	}
+}
+
+// TestWithTable tests WithTable option
+func TestWithTable(t *testing.T) {
+	type User struct {
+		ID int64 `orm1:"primary"`
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(reflect.TypeOf(User{}), mapping.WithTable("users"))
+	mappings := builder.Build()
+
+	em := mappings[reflect.TypeOf(User{})]
+
+	if em.Table != "users" {
+		t.Errorf("Table = %q, want 'users'", em.Table)
+	}
+}
+
+// TestWithPrimaryKey tests WithPrimaryKey option
+func TestWithPrimaryKey(t *testing.T) {
+	type User struct {
+		UserID   int64
+		TenantID int64
+		Name     string
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(reflect.TypeOf(User{}), mapping.WithPrimaryKey("UserID", "TenantID"))
+	mappings := builder.Build()
+
+	em := mappings[reflect.TypeOf(User{})]
+
+	expected := []string{"UserID", "TenantID"}
+	if !reflect.DeepEqual(em.PrimaryKey, expected) {
+		t.Errorf("PrimaryKey = %v, want %v", em.PrimaryKey, expected)
+	}
+}
+
+// TestBuilder_MultipleEntities tests registering multiple entities
+func TestBuilder_MultipleEntities(t *testing.T) {
+	type User struct {
+		ID int64 `orm1:"primary"`
+	}
+
+	type Post struct {
+		ID     int64 `orm1:"primary"`
+		UserID int64 `orm1:"parental"`
+	}
+
+	type Comment struct {
+		ID     int64 `orm1:"primary"`
+		PostID int64 `orm1:"parental"`
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(reflect.TypeOf(User{}))
+	builder.Register(reflect.TypeOf(Post{}))
+	builder.Register(reflect.TypeOf(Comment{}))
+	mappings := builder.Build()
+
+	if len(mappings) != 3 {
+		t.Errorf("Expected 3 mappings, got %d", len(mappings))
+	}
+
+	if mappings[reflect.TypeOf(User{})] == nil {
+		t.Error("User mapping not found")
+	}
+	if mappings[reflect.TypeOf(Post{})] == nil {
+		t.Error("Post mapping not found")
+	}
+	if mappings[reflect.TypeOf(Comment{})] == nil {
+		t.Error("Comment mapping not found")
+	}
+}
+
+// TestBuilder_MultipleOptions tests combining multiple options
+func TestBuilder_MultipleOptions(t *testing.T) {
+	type User struct {
+		UserID int64
+		Name   string
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(
+		reflect.TypeOf(User{}),
+		mapping.WithSchema("public"),
+		mapping.WithTable("users"),
+		mapping.WithPrimaryKey("UserID"),
+	)
+	mappings := builder.Build()
+
+	em := mappings[reflect.TypeOf(User{})]
+
+	if em.Schema != "public" {
+		t.Errorf("Schema = %q, want 'public'", em.Schema)
+	}
+	if em.Table != "users" {
+		t.Errorf("Table = %q, want 'users'", em.Table)
+	}
+	if len(em.PrimaryKey) != 1 || em.PrimaryKey[0] != "UserID" {
+		t.Errorf("PrimaryKey = %v, want ['UserID']", em.PrimaryKey)
+	}
+}
+
+// TestBuilder_AutoDetectChild_Singular tests auto-detection of singular child relationship
+func TestBuilder_AutoDetectChild_Singular(t *testing.T) {
+	type Child struct {
+		ID int64 `orm1:"primary"`
+	}
+
+	type Parent struct {
+		ID        int64 `orm1:"primary"`
+		MyChild   *Child // No explicit child tag - should auto-detect
+		OtherData string
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(reflect.TypeOf(Child{}))
+	builder.Register(reflect.TypeOf(Parent{}))
+	mappings := builder.Build()
+
+	parentMapping := mappings[reflect.TypeOf(Parent{})]
+
+	// Should auto-detect MyChild as a child relationship
+	if _, ok := parentMapping.ChildMap["MyChild"]; !ok {
+		t.Error("MyChild should be auto-detected as child relationship")
+	}
+
+	child := parentMapping.ChildMap["MyChild"]
+	if !child.Singular {
+		t.Error("MyChild should be singular child")
+	}
+	if child.Target != reflect.TypeOf(Child{}) {
+		t.Errorf("MyChild target type = %v, want Child", child.Target)
+	}
+}
+
+// TestBuilder_AutoDetectChild_Plural tests auto-detection of plural child relationship
+func TestBuilder_AutoDetectChild_Plural(t *testing.T) {
+	type Child struct {
+		ID int64 `orm1:"primary"`
+	}
+
+	type Parent struct {
+		ID         int64 `orm1:"primary"`
+		MyChildren []*Child // No explicit child tag - should auto-detect
+		OtherData  string
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(reflect.TypeOf(Child{}))
+	builder.Register(reflect.TypeOf(Parent{}))
+	mappings := builder.Build()
+
+	parentMapping := mappings[reflect.TypeOf(Parent{})]
+
+	// Should auto-detect MyChildren as a child relationship
+	if _, ok := parentMapping.ChildMap["MyChildren"]; !ok {
+		t.Error("MyChildren should be auto-detected as child relationship")
+	}
+
+	child := parentMapping.ChildMap["MyChildren"]
+	if child.Singular {
+		t.Error("MyChildren should be plural child")
+	}
+	if child.Target != reflect.TypeOf(Child{}) {
+		t.Errorf("MyChildren target type = %v, want Child", child.Target)
+	}
+}
+
+// TestBuilder_IgnoreUnregisteredPtr tests that pointer fields to unregistered types are ignored
+func TestBuilder_IgnoreUnregisteredPtr(t *testing.T) {
+	type OtherStruct struct {
+		Data string
+	}
+
+	type MyEntity struct {
+		ID            int64 `orm1:"primary"`
+		Name          string
+		UnknownPtr    *OtherStruct // Not registered, should be ignored
+		UnknownSlice  []*OtherStruct
+		RegularString string
+	}
+
+	builder := mapping.NewEntityMappingBuilder()
+	builder.Register(reflect.TypeOf(MyEntity{}))
+	mappings := builder.Build()
+
+	em := mappings[reflect.TypeOf(MyEntity{})]
+
+	// UnknownPtr and UnknownSlice should not be in FieldMap or ChildMap
+	if _, ok := em.FieldMap["UnknownPtr"]; ok {
+		t.Error("UnknownPtr should not be in FieldMap")
+	}
+	if _, ok := em.FieldMap["UnknownSlice"]; ok {
+		t.Error("UnknownSlice should not be in FieldMap")
+	}
+	if _, ok := em.ChildMap["UnknownPtr"]; ok {
+		t.Error("UnknownPtr should not be in ChildMap")
+	}
+	if _, ok := em.ChildMap["UnknownSlice"]; ok {
+		t.Error("UnknownSlice should not be in ChildMap")
+	}
+
+	// But RegularString should be in FieldMap
+	if _, ok := em.FieldMap["RegularString"]; !ok {
+		t.Error("RegularString should be in FieldMap")
+	}
+}

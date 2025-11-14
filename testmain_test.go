@@ -6,14 +6,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hanpama/orm1/driver"
+	"github.com/hanpama/orm1"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
-	sqliteDriver   driver.Driver
-	postgresDriver driver.Driver
+	sqliteDriver   orm1.Driver
+	postgresDriver orm1.Driver
 )
 
 func TestMain(m *testing.M) {
@@ -69,8 +69,8 @@ func setupAllTables() {
 	}
 
 	// Initialize drivers
-	sqliteDriver = driver.NewSQLite(sqliteDB)
-	postgresDriver = driver.NewPostgres(postgresDB)
+	sqliteDriver = orm1.NewSQLiteDriver(sqliteDB)
+	postgresDriver = orm1.NewPostgreSQLDriver(postgresDB)
 }
 
 // cleanupAllTables closes all database connections
