@@ -16,8 +16,7 @@ type Page struct {
 // Paginate performs cursor-based pagination on the query.
 // after/before are cursors (primary keys) for pagination boundaries.
 // first/last control the number of results (use nil for no limit).
-// Use Offset() method to set offset for the query.
-// NOTE: Paginate ignores any offset set via Offset() method when after/before cursors are used.
+// Offset set via Offset() method is applied after cursor filtering.
 func (q *EntityQuery[T]) Paginate(ctx context.Context, after Key, first *int, before Key, last *int) (*Page, error) {
 	// Optimization #1: pre-allocate capacity for PK fields
 	pkCount := len(q.mapping.PrimaryKey)
@@ -103,8 +102,7 @@ func (q *EntityQuery[T]) Paginate(ctx context.Context, after Key, first *int, be
 		limitSQL = &l
 	}
 
-	// Offset is only used when not using cursor-based pagination
-	if q.offset != nil && (after == nil || after.Length() == 0) && (before == nil || before.Length() == 0) {
+	if q.offset != nil {
 		var o sql.SQL = sql.SQLParam{Value: *q.offset}
 		offsetSQL = &o
 	}
