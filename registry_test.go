@@ -207,9 +207,14 @@ func TestMappingBuilder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder := orm1.NewRegistry()
-			builder.Register(tt.entity)
-			mappings := builder.Build()
+			registry := orm1.NewRegistry()
+			registry.Register(tt.entity)
+
+			// Build mappings using the mapping package directly
+			mappings := mapping.BuildEntityMappings(
+				registry.GetMetadata(),
+				registry.GetRegistered(),
+			)
 
 			if len(mappings) != 1 {
 				t.Fatalf("Expected 1 mapping, got %d", len(mappings))
@@ -253,10 +258,14 @@ func TestMappingBuilder_Child(t *testing.T) {
 		Children []*Child `orm1:"child"`
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&Parent{})
-	builder.Register(&Child{})
-	mappings := builder.Build()
+	registry := orm1.NewRegistry()
+	registry.Register(&Parent{})
+	registry.Register(&Child{})
+
+	mappings := mapping.BuildEntityMappings(
+		registry.GetMetadata(),
+		registry.GetRegistered(),
+	)
 
 	parentMapping := mappings[reflect.TypeOf(Parent{})]
 
@@ -277,35 +286,41 @@ func TestRegister_PanicOnNonStruct(t *testing.T) {
 		}
 	}()
 
-	builder := orm1.NewRegistry()
+	registry := orm1.NewRegistry()
 	// Try to register int pointer (not a struct)
 	var num int = 42
-	builder.Register(&num)
+	registry.Register(&num)
 }
 
-// TestBuild_Idempotent tests that Build() can be called multiple times
+// TestBuild_Idempotent tests that BuildEntityMappings is deterministic
 func TestBuild_Idempotent(t *testing.T) {
 	type User struct {
 		ID int64 `orm1:"primary"`
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
+	registry := orm1.NewRegistry()
+	registry.Register(&User{})
 
-	mappings1 := builder.Build()
-	mappings2 := builder.Build()
+	mappings1 := mapping.BuildEntityMappings(
+		registry.GetMetadata(),
+		registry.GetRegistered(),
+	)
+	mappings2 := mapping.BuildEntityMappings(
+		registry.GetMetadata(),
+		registry.GetRegistered(),
+	)
 
 	// Should return same result
 	if len(mappings1) != len(mappings2) {
-		t.Errorf("Build() returned different number of mappings on second call")
+		t.Errorf("BuildEntityMappings returned different number of mappings")
 	}
 
-	// Should be same map reference
 	em1 := mappings1[reflect.TypeOf(User{})]
 	em2 := mappings2[reflect.TypeOf(User{})]
 
-	if em1 != em2 {
-		t.Errorf("Build() returned different mapping instances")
+	// Different instances but same content
+	if em1.Table != em2.Table || len(em1.AllFields) != len(em2.AllFields) {
+		t.Errorf("BuildEntityMappings returned inconsistent results")
 	}
 }
 
@@ -315,9 +330,9 @@ func TestWithSchema(t *testing.T) {
 		ID int64 `orm1:"primary"`
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{}, orm1.WithSchema("public"))
-	mappings := builder.Build()
+	registry := orm1.NewRegistry()
+	registry.Register(&User{}, orm1.WithSchema("public"))
+	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	em := mappings[reflect.TypeOf(User{})]
 
@@ -332,9 +347,9 @@ func TestWithTable(t *testing.T) {
 		ID int64 `orm1:"primary"`
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{}, orm1.WithTable("users"))
-	mappings := builder.Build()
+	registry := orm1.NewRegistry()
+	registry.Register(&User{}, orm1.WithTable("users"))
+	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	em := mappings[reflect.TypeOf(User{})]
 
@@ -359,11 +374,11 @@ func TestBuilder_MultipleEntities(t *testing.T) {
 		PostID int64 `orm1:"parental"`
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	builder.Register(&Post{})
-	builder.Register(&Comment{})
-	mappings := builder.Build()
+	registry := orm1.NewRegistry()
+	registry.Register(&User{})
+	registry.Register(&Post{})
+	registry.Register(&Comment{})
+	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	if len(mappings) != 3 {
 		t.Errorf("Expected 3 mappings, got %d", len(mappings))
@@ -387,13 +402,13 @@ func TestBuilder_MultipleOptions(t *testing.T) {
 		Name   string
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(
+	registry := orm1.NewRegistry()
+	registry.Register(
 		&User{},
 		orm1.WithSchema("public"),
 		orm1.WithTable("users"),
 	)
-	mappings := builder.Build()
+	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	em := mappings[reflect.TypeOf(User{})]
 
@@ -420,10 +435,10 @@ func TestBuilder_AutoDetectChild_Singular(t *testing.T) {
 		OtherData string
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&Child{})
-	builder.Register(&Parent{})
-	mappings := builder.Build()
+	registry := orm1.NewRegistry()
+	registry.Register(&Child{})
+	registry.Register(&Parent{})
+	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	parentMapping := mappings[reflect.TypeOf(Parent{})]
 
@@ -453,10 +468,10 @@ func TestBuilder_AutoDetectChild_Plural(t *testing.T) {
 		OtherData  string
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&Child{})
-	builder.Register(&Parent{})
-	mappings := builder.Build()
+	registry := orm1.NewRegistry()
+	registry.Register(&Child{})
+	registry.Register(&Parent{})
+	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	parentMapping := mappings[reflect.TypeOf(Parent{})]
 
@@ -488,9 +503,9 @@ func TestBuilder_IgnoreUnregisteredPtr(t *testing.T) {
 		RegularString string
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&MyEntity{})
-	mappings := builder.Build()
+	registry := orm1.NewRegistry()
+	registry.Register(&MyEntity{})
+	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	em := mappings[reflect.TypeOf(MyEntity{})]
 

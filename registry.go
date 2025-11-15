@@ -6,13 +6,12 @@ import (
 	"github.com/hanpama/orm1/mapping"
 )
 
-// Registry constructs EntityMapping instances from struct types.
-// It analyzes struct fields to determine columns, relationships, and keys.
+// Registry is a storage for entity type metadata.
+// It collects struct field metadata through registration and provides
+// this metadata to SessionFactory for building EntityMapping instances.
 type Registry struct {
 	registered map[reflect.Type]bool
 	metadata   map[reflect.Type]mapping.EntityMetadata
-	mappings   map[reflect.Type]*mapping.EntityMapping
-	built      bool
 }
 
 // NewRegistry creates a new registry.
@@ -20,7 +19,6 @@ func NewRegistry() *Registry {
 	return &Registry{
 		registered: make(map[reflect.Type]bool),
 		metadata:   make(map[reflect.Type]mapping.EntityMetadata),
-		mappings:   make(map[reflect.Type]*mapping.EntityMapping),
 	}
 }
 
@@ -132,17 +130,16 @@ func (r *Registry) Register(entityPtr any, opts ...MappingOption) {
 	r.metadata[entityType] = meta
 }
 
-// Build constructs EntityMapping instances for all registered types.
-// Returns a map of entity type to mapping for fast lookup without additional allocations.
-func (r *Registry) Build() map[reflect.Type]*mapping.EntityMapping {
-	if r.built {
-		return r.mappings
-	}
+// GetMetadata returns the collected metadata for building.
+// This is used by SessionFactory to build EntityMapping instances.
+func (r *Registry) GetMetadata() map[reflect.Type]mapping.EntityMetadata {
+	return r.metadata
+}
 
-	r.mappings = mapping.BuildEntityMappings(r.metadata, r.registered)
-	r.built = true
-
-	return r.mappings
+// GetRegistered returns the set of registered entity types.
+// This is used by SessionFactory to detect child relationships.
+func (r *Registry) GetRegistered() map[reflect.Type]bool {
+	return r.registered
 }
 
 // MappingOption is a function that configures an EntityMetadata.

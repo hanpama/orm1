@@ -79,6 +79,22 @@ func testCRUDContracts(t *testing.T, ctx context.Context, backend driver.Backend
 	t.Run("Delete_CompositeKey", func(t *testing.T) {
 		testDeleteCompositeKey(t, ctx, backend, schema, table, ids)
 	})
+
+	t.Run("Select_EmptyKeys", func(t *testing.T) {
+		testSelectEmptyKeys(t, ctx, backend, schema, table)
+	})
+
+	t.Run("Insert_EmptyValues", func(t *testing.T) {
+		testInsertEmptyValues(t, ctx, backend, schema, table)
+	})
+
+	t.Run("Update_EmptyValues", func(t *testing.T) {
+		testUpdateEmptyValues(t, ctx, backend, schema, table)
+	})
+
+	t.Run("Delete_EmptyKeys", func(t *testing.T) {
+		testDeleteEmptyKeys(t, ctx, backend, schema, table)
+	})
 }
 
 func testSelectReturnsNonNilRows(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string, ids []int64) {
@@ -445,5 +461,99 @@ func testDeleteCompositeKey(t *testing.T, ctx context.Context, backend driver.Ba
 	err = backend.Delete(ctx, deleteOp)
 	if err != nil {
 		t.Fatalf("Delete with composite key failed: %v", err)
+	}
+}
+
+func testSelectEmptyKeys(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+	// Contract: Select with empty Keys returns empty Rows (no error)
+	selectOp := driver.SelectOp{
+		Select:     []string{"id", "name"},
+		FromSchema: schema,
+		FromTable:  table,
+		KeyColumns: []string{"id"},
+		Keys:       []key.Key{}, // Empty
+	}
+
+	rows, err := backend.Select(ctx, selectOp)
+	if err != nil {
+		t.Fatalf("Select with empty keys should not error, got: %v", err)
+	}
+	defer rows.Close()
+
+	if rows == nil {
+		t.Fatal("Contract violation: Select returned nil Rows")
+	}
+
+	// Should return zero rows
+	count := 0
+	for rows.Next() {
+		count++
+	}
+
+	if count != 0 {
+		t.Errorf("Expected 0 rows for empty keys, got %d", count)
+	}
+}
+
+func testInsertEmptyValues(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+	// Contract: Insert with empty Values returns empty Rows (no error)
+	insertOp := driver.InsertOp{
+		IntoSchema: schema,
+		IntoTable:  table,
+		Insert:     []string{"name", "value"},
+		Returning:  []string{"id"},
+		Values:     [][]any{}, // Empty
+	}
+
+	rows, err := backend.Insert(ctx, insertOp)
+	if err != nil {
+		t.Fatalf("Insert with empty values should not error, got: %v", err)
+	}
+	defer rows.Close()
+
+	if rows == nil {
+		t.Fatal("Contract violation: Insert returned nil Rows")
+	}
+
+	// Should return zero rows
+	count := 0
+	for rows.Next() {
+		count++
+	}
+
+	if count != 0 {
+		t.Errorf("Expected 0 rows for empty values, got %d", count)
+	}
+}
+
+func testUpdateEmptyValues(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+	// Contract: Update with empty SetValues succeeds (no-op)
+	updateOp := driver.UpdateOp{
+		Schema:      schema,
+		Table:       table,
+		Sets:        []string{"name"},
+		Where:       []string{"id"},
+		SetValues:   [][]any{}, // Empty
+		WhereValues: [][]any{}, // Empty
+	}
+
+	err := backend.Update(ctx, updateOp)
+	if err != nil {
+		t.Fatalf("Update with empty values should not error, got: %v", err)
+	}
+}
+
+func testDeleteEmptyKeys(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+	// Contract: Delete with empty Keys succeeds (no-op)
+	deleteOp := driver.DeleteOp{
+		FromSchema: schema,
+		FromTable:  table,
+		KeyColumns: []string{"id"},
+		Keys:       []key.Key{}, // Empty
+	}
+
+	err := backend.Delete(ctx, deleteOp)
+	if err != nil {
+		t.Fatalf("Delete with empty keys should not error, got: %v", err)
 	}
 }
