@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hanpama/orm1"
 	"github.com/hanpama/orm1/mapping"
 )
 
@@ -31,6 +30,24 @@ type Comment struct {
 	ID     int64 `orm1:"primary"`
 	PostID int64 `orm1:"parental"`
 	Text   string
+}
+
+// buildTestMappings creates EntityMappings for testing without importing orm1.
+func buildTestMappings(entityTypes ...reflect.Type) map[reflect.Type]*mapping.EntityMapping {
+	metadata := make(map[reflect.Type]mapping.EntityMetadata)
+	registered := make(map[reflect.Type]bool)
+
+	for _, entityType := range entityTypes {
+		registered[entityType] = true
+		fields := mapping.AnalyzeStruct(entityType)
+		metadata[entityType] = mapping.EntityMetadata{
+			Schema: "",
+			Table:  mapping.ToSnakeCase(entityType.Name()),
+			Fields: fields,
+		}
+	}
+
+	return mapping.BuildEntityMappings(metadata, registered)
 }
 
 // TestField_GetValue tests Field.GetValue() with various types
@@ -62,9 +79,7 @@ func TestField_GetValue(t *testing.T) {
 		},
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}))
 	em := mappings[reflect.TypeOf(User{})]
 
 	for _, tt := range tests {
@@ -80,9 +95,7 @@ func TestField_GetValue(t *testing.T) {
 
 // TestField_SetValue tests Field.SetValue() with various types
 func TestField_SetValue(t *testing.T) {
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}))
 	em := mappings[reflect.TypeOf(User{})]
 
 	tests := []struct {
@@ -114,9 +127,7 @@ func TestField_SetValue(t *testing.T) {
 func TestField_GetPtr(t *testing.T) {
 	user := &User{ID: 123}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}))
 	em := mappings[reflect.TypeOf(User{})]
 
 	field := em.FieldMap["ID"]
@@ -133,9 +144,7 @@ func TestField_GetPtr(t *testing.T) {
 
 // TestEntityMapping_Columns tests Columns() accessor
 func TestEntityMapping_Columns(t *testing.T) {
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}))
 	em := mappings[reflect.TypeOf(User{})]
 
 	columns := em.Columns()
@@ -159,9 +168,7 @@ func TestEntityMapping_Columns(t *testing.T) {
 
 // TestEntityMapping_PrimaryColumns tests PrimaryColumns() accessor
 func TestEntityMapping_PrimaryColumns(t *testing.T) {
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}))
 	em := mappings[reflect.TypeOf(User{})]
 
 	primaryColumns := em.PrimaryColumns()
@@ -180,9 +187,7 @@ func TestEntityMapping_PrimaryColumns_Composite(t *testing.T) {
 		Quantity  int
 	}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&OrderItem{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(OrderItem{}))
 	em := mappings[reflect.TypeOf(OrderItem{})]
 
 	primaryColumns := em.PrimaryColumns()
@@ -195,9 +200,7 @@ func TestEntityMapping_PrimaryColumns_Composite(t *testing.T) {
 
 // TestEntityMapping_InsertableColumns tests InsertableColumns() excludes skip_insert
 func TestEntityMapping_InsertableColumns(t *testing.T) {
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}))
 	em := mappings[reflect.TypeOf(User{})]
 
 	insertable := em.InsertableColumns()
@@ -232,9 +235,7 @@ func TestEntityMapping_InsertableColumns(t *testing.T) {
 
 // TestEntityMapping_UpdatableColumns tests UpdatableColumns() excludes skip_update and primary
 func TestEntityMapping_UpdatableColumns(t *testing.T) {
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}))
 	em := mappings[reflect.TypeOf(User{})]
 
 	updatable := em.UpdatableColumns()
@@ -268,11 +269,7 @@ func TestEntityMapping_UpdatableColumns(t *testing.T) {
 
 // TestEntityMapping_ParentalColumns tests ParentalColumns()
 func TestEntityMapping_ParentalColumns(t *testing.T) {
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	builder.Register(&Post{})
-	builder.Register(&Comment{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}), reflect.TypeOf(Post{}), reflect.TypeOf(Comment{}))
 
 	postMapping := mappings[reflect.TypeOf(Post{})]
 	parentalColumns := postMapping.ParentalColumns()
@@ -285,9 +282,7 @@ func TestEntityMapping_ParentalColumns(t *testing.T) {
 
 // TestEntityMapping_InsertReturningColumns tests InsertReturningColumns()
 func TestEntityMapping_InsertReturningColumns(t *testing.T) {
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}))
 	em := mappings[reflect.TypeOf(User{})]
 
 	returning := em.InsertReturningColumns()
@@ -312,9 +307,7 @@ func TestEntityMapping_InsertReturningColumns(t *testing.T) {
 
 // TestEntityMapping_InsertReturning tests InsertReturning() field names
 func TestEntityMapping_InsertReturning(t *testing.T) {
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}))
 	em := mappings[reflect.TypeOf(User{})]
 
 	returning := em.InsertReturning()
@@ -342,11 +335,7 @@ func TestChild_Get_Singular(t *testing.T) {
 	author := &User{ID: 1, Name: "Alice"}
 	post := &Post{ID: 100, Author: author}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	builder.Register(&Post{})
-	builder.Register(&Comment{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}), reflect.TypeOf(Post{}), reflect.TypeOf(Comment{}))
 
 	postMapping := mappings[reflect.TypeOf(Post{})]
 	child := postMapping.ChildMap["Author"]
@@ -368,11 +357,7 @@ func TestChild_Get_Plural(t *testing.T) {
 	comment2 := &Comment{ID: 2, Text: "Second"}
 	post := &Post{ID: 100, Comments: []*Comment{comment1, comment2}}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	builder.Register(&Post{})
-	builder.Register(&Comment{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}), reflect.TypeOf(Post{}), reflect.TypeOf(Comment{}))
 
 	postMapping := mappings[reflect.TypeOf(Post{})]
 	child := postMapping.ChildMap["Comments"]
@@ -392,11 +377,7 @@ func TestChild_Get_Plural(t *testing.T) {
 func TestChild_Get_NilSingular(t *testing.T) {
 	post := &Post{ID: 100, Author: nil}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	builder.Register(&Post{})
-	builder.Register(&Comment{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}), reflect.TypeOf(Post{}), reflect.TypeOf(Comment{}))
 
 	postMapping := mappings[reflect.TypeOf(Post{})]
 	child := postMapping.ChildMap["Author"]
@@ -413,11 +394,7 @@ func TestChild_Set_Singular(t *testing.T) {
 	post := &Post{ID: 100}
 	author := &User{ID: 1, Name: "Alice"}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	builder.Register(&Post{})
-	builder.Register(&Comment{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}), reflect.TypeOf(Post{}), reflect.TypeOf(Comment{}))
 
 	postMapping := mappings[reflect.TypeOf(Post{})]
 	child := postMapping.ChildMap["Author"]
@@ -435,11 +412,7 @@ func TestChild_Set_Plural(t *testing.T) {
 	comment1 := &Comment{ID: 1, Text: "First"}
 	comment2 := &Comment{ID: 2, Text: "Second"}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	builder.Register(&Post{})
-	builder.Register(&Comment{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}), reflect.TypeOf(Post{}), reflect.TypeOf(Comment{}))
 
 	postMapping := mappings[reflect.TypeOf(Post{})]
 	child := postMapping.ChildMap["Comments"]
@@ -476,11 +449,7 @@ func TestChild_Set_NilPlural(t *testing.T) {
 	post := &Post{ID: 100, Comments: nil}
 	comment1 := &Comment{ID: 1, Text: "First"}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	builder.Register(&Post{})
-	builder.Register(&Comment{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}), reflect.TypeOf(Post{}), reflect.TypeOf(Comment{}))
 
 	postMapping := mappings[reflect.TypeOf(Post{})]
 	child := postMapping.ChildMap["Comments"]
@@ -503,11 +472,7 @@ func TestChild_Set_EmptySingular(t *testing.T) {
 	author := &User{ID: 1, Name: "Alice"}
 	post := &Post{ID: 100, Author: author}
 
-	builder := orm1.NewRegistry()
-	builder.Register(&User{})
-	builder.Register(&Post{})
-	builder.Register(&Comment{})
-	mappings := builder.Build()
+	mappings := buildTestMappings(reflect.TypeOf(User{}), reflect.TypeOf(Post{}), reflect.TypeOf(Comment{}))
 
 	postMapping := mappings[reflect.TypeOf(Post{})]
 	child := postMapping.ChildMap["Author"]

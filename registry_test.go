@@ -343,26 +343,6 @@ func TestWithTable(t *testing.T) {
 	}
 }
 
-// TestWithPrimaryKey tests WithPrimaryKey option
-func TestWithPrimaryKey(t *testing.T) {
-	type User struct {
-		UserID   int64
-		TenantID int64
-		Name     string
-	}
-
-	builder := orm1.NewRegistry()
-	builder.Register(&User{}, orm1.WithPrimaryKey("UserID", "TenantID"))
-	mappings := builder.Build()
-
-	em := mappings[reflect.TypeOf(User{})]
-
-	expected := []string{"UserID", "TenantID"}
-	if !reflect.DeepEqual(em.PrimaryKey, expected) {
-		t.Errorf("PrimaryKey = %v, want %v", em.PrimaryKey, expected)
-	}
-}
-
 // TestBuilder_MultipleEntities tests registering multiple entities
 func TestBuilder_MultipleEntities(t *testing.T) {
 	type User struct {
@@ -403,7 +383,7 @@ func TestBuilder_MultipleEntities(t *testing.T) {
 // TestBuilder_MultipleOptions tests combining multiple options
 func TestBuilder_MultipleOptions(t *testing.T) {
 	type User struct {
-		UserID int64
+		UserID int64 `orm1:"primary"`
 		Name   string
 	}
 
@@ -412,7 +392,6 @@ func TestBuilder_MultipleOptions(t *testing.T) {
 		&User{},
 		orm1.WithSchema("public"),
 		orm1.WithTable("users"),
-		orm1.WithPrimaryKey("UserID"),
 	)
 	mappings := builder.Build()
 

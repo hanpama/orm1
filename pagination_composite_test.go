@@ -47,8 +47,7 @@ func TestPaginationCompositeAscForwardNullsLast(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -111,8 +110,7 @@ func TestPaginationCompositeAscBackwardNullsLast(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -173,8 +171,7 @@ func TestPaginationCompositeAscForwardNullsFirst(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -219,8 +216,7 @@ func TestPaginationCompositeAscBackwardNullsFirst(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -265,8 +261,7 @@ func TestPaginationCompositeDescForwardNullsLast(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -311,8 +306,7 @@ func TestPaginationCompositeDescBackwardNullsLast(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -373,8 +367,7 @@ func TestPaginationCompositeDescForwardNullsFirst(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -435,8 +428,7 @@ func TestPaginationCompositeDescBackwardNullsFirst(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -500,8 +492,7 @@ func TestPaginationCompositeAscDefaultNulls(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -564,8 +555,7 @@ func TestPaginationCompositeDescDefaultNulls(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -627,8 +617,7 @@ func TestPaginationCompositeAscBackwardDefaultNulls(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
@@ -689,8 +678,7 @@ func TestPaginationCompositeDescBackwardDefaultNulls(t *testing.T) {
 			ctx := context.Background()
 			registry := orm1.NewRegistry()
 			registry.Register(&BlogPostComposite{},
-				orm1.WithTable("blog_posts_composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("blog_posts_composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 

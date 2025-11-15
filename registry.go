@@ -10,24 +10,16 @@ import (
 // It analyzes struct fields to determine columns, relationships, and keys.
 type Registry struct {
 	registered map[reflect.Type]bool
-	configs    map[reflect.Type]*entityConfig
+	metadata   map[reflect.Type]mapping.EntityMetadata
 	mappings   map[reflect.Type]*mapping.EntityMapping
 	built      bool
-}
-
-// entityConfig holds configuration for an entity mapping.
-type entityConfig struct {
-	Schema      string
-	Table       string
-	PrimaryKey  []string
-	ParentalKey []string
 }
 
 // NewRegistry creates a new registry.
 func NewRegistry() *Registry {
 	return &Registry{
 		registered: make(map[reflect.Type]bool),
-		configs:    make(map[reflect.Type]*entityConfig),
+		metadata:   make(map[reflect.Type]mapping.EntityMetadata),
 		mappings:   make(map[reflect.Type]*mapping.EntityMapping),
 	}
 }
@@ -123,25 +115,21 @@ func (r *Registry) Register(entityPtr any, opts ...MappingOption) {
 
 	r.registered[entityType] = true
 
-	config := &entityConfig{
-		Schema:      "",
-		Table:       mapping.ToSnakeCase(entityType.Name()),
-		PrimaryKey:  nil,
-		ParentalKey: nil,
-	}
-	r.configs[entityType] = config
+	// Analyze struct to get field metadata
+	fields := mapping.AnalyzeStruct(entityType)
 
-	tempMapping := &mapping.EntityMapping{
-		Schema:     config.Schema,
-		Table:      config.Table,
-		PrimaryKey: config.PrimaryKey,
+	meta := mapping.EntityMetadata{
+		Schema: "",
+		Table:  mapping.ToSnakeCase(entityType.Name()),
+		Fields: fields,
 	}
+
+	// Apply options to configure metadata
 	for _, opt := range opts {
-		opt(tempMapping)
+		opt(&meta)
 	}
-	config.Schema = tempMapping.Schema
-	config.Table = tempMapping.Table
-	config.PrimaryKey = tempMapping.PrimaryKey
+
+	r.metadata[entityType] = meta
 }
 
 // Build constructs EntityMapping instances for all registered types.
@@ -151,179 +139,18 @@ func (r *Registry) Build() map[reflect.Type]*mapping.EntityMapping {
 		return r.mappings
 	}
 
-	for entityType := range r.registered {
-		if _, ok := r.mappings[entityType]; !ok {
-			entityMapping := r.buildMapping(entityType)
-			r.mappings[entityType] = entityMapping
-		}
-	}
-
+	r.mappings = mapping.BuildEntityMappings(r.metadata, r.registered)
 	r.built = true
 
 	return r.mappings
 }
 
-// buildMapping constructs an EntityMapping for a single entity type.
-func (r *Registry) buildMapping(entityType reflect.Type) *mapping.EntityMapping {
-	config := r.configs[entityType]
-
-	fieldMap := make(map[string]*mapping.Field)
-	childMap := make(map[string]*mapping.Child)
-	allFields := []string{}
-	primaryKey := []string{}
-	parentalKey := []string{}
-	insertable := []string{}
-	updatable := []string{}
-
-	fieldsMetadata := mapping.AnalyzeStruct(entityType)
-
-	for _, metadata := range fieldsMetadata {
-		fieldName := metadata.Name
-		fieldType := metadata.Typ
-
-		if metadata.IgnoreTag {
-			continue
-		}
-
-		isChild := metadata.ChildTag
-		var childTarget reflect.Type
-		var childSingular bool
-
-		if !isChild {
-			// Auto-detect child relationship if not explicitly tagged
-			// Check for slice of registered type: []*Post
-			if fieldType.Kind() == reflect.Slice {
-				elemType := fieldType.Elem()
-				if elemType.Kind() == reflect.Ptr {
-					targetType := elemType.Elem()
-					if r.registered[targetType] {
-						isChild = true
-						childTarget = targetType
-						childSingular = false
-					}
-				}
-			}
-
-			if !isChild && fieldType.Kind() == reflect.Ptr {
-				targetType := fieldType.Elem()
-				if r.registered[targetType] {
-					isChild = true
-					childTarget = targetType
-					childSingular = true
-				}
-			}
-		} else {
-			if fieldType.Kind() == reflect.Slice {
-				elemType := fieldType.Elem()
-				if elemType.Kind() == reflect.Ptr {
-					childTarget = elemType.Elem()
-					childSingular = false
-				}
-			} else if fieldType.Kind() == reflect.Ptr {
-				childTarget = fieldType.Elem()
-				childSingular = true
-			}
-		}
-
-		if isChild {
-			child := mapping.Child{
-				Target:     childTarget,
-				Singular:   childSingular,
-				Type:       fieldType,
-				ByteOffset: metadata.ByteOffset,
-			}
-			childMap[fieldName] = &child
-			continue
-		}
-
-		if fieldType.Kind() == reflect.Slice {
-			continue
-		}
-
-		if fieldType.Kind() == reflect.Ptr && fieldType.Elem().Kind() == reflect.Struct {
-			continue
-		}
-
-		columnName := metadata.ColumnTag
-		if columnName == "" {
-			columnName = metadata.DefaultColumn
-		}
-
-		field := mapping.Field{
-			Name:       metadata.Name,
-			Column:     columnName,
-			Type:       metadata.Typ,
-			ByteOffset: metadata.ByteOffset,
-		}
-
-		fieldMap[fieldName] = &field
-
-		isPrimaryKey := metadata.PrimaryTag
-		isParentalKey := metadata.ParentalTag
-
-		if !isPrimaryKey && !isParentalKey {
-			if len(config.PrimaryKey) > 0 {
-				// Use configured primary key
-				for _, pkField := range config.PrimaryKey {
-					if pkField == fieldName {
-						isPrimaryKey = true
-						break
-					}
-				}
-			} else {
-				// Default: ID field is primary key
-				isPrimaryKey = (fieldName == "ID")
-			}
-		}
-
-		// Add to AllFields (all fields are included regardless of role)
-		allFields = append(allFields, fieldName)
-
-		// A field can be both primary and parental (e.g., 1:1 relationship where PK=FK)
-		if isPrimaryKey {
-			primaryKey = append(primaryKey, fieldName)
-		}
-		if isParentalKey {
-			parentalKey = append(parentalKey, fieldName)
-		}
-
-		if isPrimaryKey || isParentalKey {
-			// Primary/parental keys are insertable unless tagged skip_insert
-			if !metadata.SkipInsertTag {
-				insertable = append(insertable, fieldName)
-			}
-			// Primary/parental keys are not updatable (they define identity)
-		} else {
-			// Regular fields are insertable and updatable unless tagged otherwise
-			if !metadata.SkipInsertTag {
-				insertable = append(insertable, fieldName)
-			}
-			if !metadata.SkipUpdateTag {
-				updatable = append(updatable, fieldName)
-			}
-		}
-	}
-
-	return mapping.NewEntityMapping(
-		entityType,
-		config.Schema,
-		config.Table,
-		fieldMap,
-		childMap,
-		allFields,
-		primaryKey,
-		parentalKey,
-		insertable,
-		updatable,
-	)
-}
-
-// MappingOption is a function that configures an EntityMapping.
-type MappingOption func(*mapping.EntityMapping)
+// MappingOption is a function that configures an EntityMetadata.
+type MappingOption func(*mapping.EntityMetadata)
 
 // WithSchema sets the database schema for the entity's table.
 func WithSchema(schema string) MappingOption {
-	return func(m *mapping.EntityMapping) {
+	return func(m *mapping.EntityMetadata) {
 		m.Schema = schema
 	}
 }
@@ -331,15 +158,8 @@ func WithSchema(schema string) MappingOption {
 // WithTable sets the table name for the entity.
 // If not specified, defaults to snake_case of the struct name.
 func WithTable(table string) MappingOption {
-	return func(m *mapping.EntityMapping) {
+	return func(m *mapping.EntityMetadata) {
 		m.Table = table
 	}
 }
 
-// WithPrimaryKey specifies the field names that form the primary key.
-// If not specified, defaults to the "ID" field.
-func WithPrimaryKey(fieldNames ...string) MappingOption {
-	return func(m *mapping.EntityMapping) {
-		m.PrimaryKey = fieldNames
-	}
-}
