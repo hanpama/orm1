@@ -295,28 +295,35 @@ func TestExtractKey_KeyEquality(t *testing.T) {
 
 // Helper function to create EntityMapping for test
 func createEntityMapping(fieldNames []string) *mapping.EntityMapping {
-	fieldMap := make(map[string]*mapping.Field)
-
 	entityType := reflect.TypeOf(Entity{})
+
+	// Analyze struct and mark specified fields as primary
+	fields := mapping.AnalyzeStruct(entityType)
+
+	// Override PrimaryTag for specified fields
+	isPrimaryField := make(map[string]bool)
 	for _, name := range fieldNames {
-		field, _ := entityType.FieldByName(name)
-		fieldMap[name] = &mapping.Field{
-			Name:       name,
-			Column:     name,
-			Type:       field.Type,
-			ByteOffset: field.Offset,
+		isPrimaryField[name] = true
+	}
+
+	for i := range fields {
+		if isPrimaryField[fields[i].Name] {
+			fields[i].PrimaryTag = true
 		}
 	}
 
-	return mapping.NewEntityMapping(
-		entityType,
-		"", "entity",
-		fieldMap,
-		map[string]*mapping.Child{},
-		fieldNames,
-		fieldNames,
-		[]string{},
-		fieldNames,
-		[]string{},
-	)
+	// Use BuildEntityMappings to create the mapping
+	metadata := map[reflect.Type]mapping.EntityMetadata{
+		entityType: {
+			Schema: "",
+			Table:  "entity",
+			Fields: fields,
+		},
+	}
+	registered := map[reflect.Type]bool{
+		entityType: true,
+	}
+
+	mappings := mapping.BuildEntityMappings(metadata, registered)
+	return mappings[entityType]
 }

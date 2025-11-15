@@ -244,8 +244,7 @@ func TestPersistenceComposite(t *testing.T) {
 			// Create session factory and register entity
 			registry := orm1.NewRegistry()
 			registry.Register(&Composite{},
-				orm1.WithTable("composite"),
-				orm1.WithPrimaryKey("Key1", "Key2"))
+				orm1.WithTable("composite"))
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 
 			session := factory.CreateSession()

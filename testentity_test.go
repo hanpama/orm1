@@ -22,8 +22,8 @@ type SimpleUUID struct {
 
 // Composite - composite PK with all field attributes
 type Composite struct {
-	Key1          int
-	Key2          int
+	Key1          int    `orm1:"primary"`
+	Key2          int    `orm1:"primary"`
 	Name          string
 	SkipInsert    string `orm1:"skip_insert"`
 	SkipUpdate    string `orm1:"skip_update"`
@@ -106,8 +106,8 @@ type BlogPost struct {
 }
 
 type BlogPostComposite struct {
-	Key1        int64
-	Key2        int64
+	Key1        int64 `orm1:"primary"`
+	Key2        int64 `orm1:"primary"`
 	Title       string
 	Rating      *int
 	PublishedAt *int64
