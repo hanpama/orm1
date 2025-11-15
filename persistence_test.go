@@ -20,8 +20,9 @@ func TestPersistenceSimpleAuto(t *testing.T) {
 			ctx := context.Background()
 
 			// Create session factory and register entity
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			registry := orm1.NewRegistry()
+			registry.Register(&SimpleAuto{}, orm1.WithTable("simple_auto"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 
 			session := factory.CreateSession()
 			var entityID int64
@@ -137,8 +138,9 @@ func TestPersistenceSimpleUUID(t *testing.T) {
 			ctx := context.Background()
 
 			// Create session factory and register entity
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SimpleUUID{}, orm1.WithTable("simple_uuid"))
+			registry := orm1.NewRegistry()
+			registry.Register(&SimpleUUID{}, orm1.WithTable("simple_uuid"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 
 			session := factory.CreateSession()
 
@@ -240,10 +242,11 @@ func TestPersistenceComposite(t *testing.T) {
 			ctx := context.Background()
 
 			// Create session factory and register entity
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&Composite{},
+			registry := orm1.NewRegistry()
+			registry.Register(&Composite{},
 				orm1.WithTable("composite"),
 				orm1.WithPrimaryKey("Key1", "Key2"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 
 			session := factory.CreateSession()
 
@@ -346,9 +349,10 @@ func TestPersistenceSpecialQuote(t *testing.T) {
 			ctx := context.Background()
 
 			// Create session factory and register entity
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&SpecialQuote{},
+			registry := orm1.NewRegistry()
+			registry.Register(&SpecialQuote{},
 				orm1.WithTable("special\"quote"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 
 			session := factory.CreateSession()
 
@@ -466,14 +470,15 @@ func TestPersistenceAggregate(t *testing.T) {
 			ctx := context.Background()
 
 			// Create session factory and register all entities
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&Purchase{}, orm1.WithTable("purchase"))
-			factory.RegisterEntity(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
-			factory.RegisterEntity(&PurchaseBilling{}, orm1.WithTable("purchase_billing"))
-			factory.RegisterEntity(&PurchaseBillingAttachment{}, orm1.WithTable("purchase_billing_attachment"))
-			factory.RegisterEntity(&PurchaseBillingPayment{}, orm1.WithTable("purchase_billing_payment"))
-			factory.RegisterEntity(&PurchaseWithdrawal{}, orm1.WithTable("purchase_withdrawal"))
-			factory.RegisterEntity(&PurchaseWithdrawalAttachment{}, orm1.WithTable("purchase_withdrawal_attachment"))
+			registry := orm1.NewRegistry()
+			registry.Register(&Purchase{}, orm1.WithTable("purchase"))
+			registry.Register(&PurchaseLineItem{}, orm1.WithTable("purchase_line_item"))
+			registry.Register(&PurchaseBilling{}, orm1.WithTable("purchase_billing"))
+			registry.Register(&PurchaseBillingAttachment{}, orm1.WithTable("purchase_billing_attachment"))
+			registry.Register(&PurchaseBillingPayment{}, orm1.WithTable("purchase_billing_payment"))
+			registry.Register(&PurchaseWithdrawal{}, orm1.WithTable("purchase_withdrawal"))
+			registry.Register(&PurchaseWithdrawalAttachment{}, orm1.WithTable("purchase_withdrawal_attachment"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 
 			session := factory.CreateSession()
 

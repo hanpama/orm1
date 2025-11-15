@@ -25,12 +25,14 @@ func setupORM1PostgresDB(b *testing.B) (*orm1.SessionFactory, func()) {
 		b.Fatal(err)
 	}
 
+	registry := orm1.NewRegistry()
+	registry.Register(&shared.User{}, orm1.WithTable("users"))
+	registry.Register(&shared.Order{}, orm1.WithTable("orders"))
+	registry.Register(&shared.OrderItem{}, orm1.WithTable("order_items"))
+	registry.Register(&shared.OrderNote{}, orm1.WithTable("order_notes"))
+
 	driver := orm1.NewPostgreSQLDriver(db)
-	factory := orm1.NewSessionFactoryWithDriver(driver)
-	factory.RegisterEntity(&shared.User{}, orm1.WithTable("users"))
-	factory.RegisterEntity(&shared.Order{}, orm1.WithTable("orders"))
-	factory.RegisterEntity(&shared.OrderItem{}, orm1.WithTable("order_items"))
-	factory.RegisterEntity(&shared.OrderNote{}, orm1.WithTable("order_notes"))
+	factory := orm1.NewSessionFactory(registry, driver)
 
 	cleanup := func() {
 		shared.CleanupPostgresTables(db)

@@ -1,4 +1,4 @@
-package mapping_test
+package orm1_test
 
 import (
 	"reflect"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/hanpama/orm1"
 	"github.com/hanpama/orm1/mapping"
 )
 
@@ -206,16 +207,16 @@ func TestMappingBuilder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder := mapping.NewEntityMappingBuilder()
-			val := reflect.ValueOf(tt.entity)
-			entityType := val.Elem().Type()
-			builder.Register(entityType)
+			builder := orm1.NewRegistry()
+			builder.Register(tt.entity)
 			mappings := builder.Build()
 
 			if len(mappings) != 1 {
 				t.Fatalf("Expected 1 mapping, got %d", len(mappings))
 			}
 
+			val := reflect.ValueOf(tt.entity)
+			entityType := val.Elem().Type()
 			got := mappings[entityType]
 
 			// Ignore EntityType as it varies per anonymous struct
@@ -252,9 +253,9 @@ func TestMappingBuilder_Child(t *testing.T) {
 		Children []*Child `orm1:"child"`
 	}
 
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(Parent{}))
-	builder.Register(reflect.TypeOf(Child{}))
+	builder := orm1.NewRegistry()
+	builder.Register(&Parent{})
+	builder.Register(&Child{})
 	mappings := builder.Build()
 
 	parentMapping := mappings[reflect.TypeOf(Parent{})]
@@ -276,9 +277,10 @@ func TestRegister_PanicOnNonStruct(t *testing.T) {
 		}
 	}()
 
-	builder := mapping.NewEntityMappingBuilder()
-	// Try to register int type (not a struct)
-	builder.Register(reflect.TypeOf(42))
+	builder := orm1.NewRegistry()
+	// Try to register int pointer (not a struct)
+	var num int = 42
+	builder.Register(&num)
 }
 
 // TestBuild_Idempotent tests that Build() can be called multiple times
@@ -287,8 +289,8 @@ func TestBuild_Idempotent(t *testing.T) {
 		ID int64 `orm1:"primary"`
 	}
 
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(User{}))
+	builder := orm1.NewRegistry()
+	builder.Register(&User{})
 
 	mappings1 := builder.Build()
 	mappings2 := builder.Build()
@@ -307,49 +309,14 @@ func TestBuild_Idempotent(t *testing.T) {
 	}
 }
 
-// TestGetMapping_BeforeBuild tests GetMapping returns nil before Build
-func TestGetMapping_BeforeBuild(t *testing.T) {
-	type User struct {
-		ID int64 `orm1:"primary"`
-	}
-
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(User{}))
-
-	// GetMapping before Build should return nil
-	result := builder.GetMapping(reflect.TypeOf(User{}))
-
-	if result != nil {
-		t.Errorf("GetMapping() before Build() should return nil, got %v", result)
-	}
-}
-
-// TestGetMapping_AfterBuild tests GetMapping returns mapping after Build
-func TestGetMapping_AfterBuild(t *testing.T) {
-	type User struct {
-		ID int64 `orm1:"primary"`
-	}
-
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(User{}))
-	builder.Build()
-
-	// GetMapping after Build should return mapping
-	result := builder.GetMapping(reflect.TypeOf(User{}))
-
-	if result == nil {
-		t.Error("GetMapping() after Build() should return mapping")
-	}
-}
-
 // TestWithSchema tests WithSchema option
 func TestWithSchema(t *testing.T) {
 	type User struct {
 		ID int64 `orm1:"primary"`
 	}
 
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(User{}), mapping.WithSchema("public"))
+	builder := orm1.NewRegistry()
+	builder.Register(&User{}, orm1.WithSchema("public"))
 	mappings := builder.Build()
 
 	em := mappings[reflect.TypeOf(User{})]
@@ -365,8 +332,8 @@ func TestWithTable(t *testing.T) {
 		ID int64 `orm1:"primary"`
 	}
 
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(User{}), mapping.WithTable("users"))
+	builder := orm1.NewRegistry()
+	builder.Register(&User{}, orm1.WithTable("users"))
 	mappings := builder.Build()
 
 	em := mappings[reflect.TypeOf(User{})]
@@ -384,8 +351,8 @@ func TestWithPrimaryKey(t *testing.T) {
 		Name     string
 	}
 
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(User{}), mapping.WithPrimaryKey("UserID", "TenantID"))
+	builder := orm1.NewRegistry()
+	builder.Register(&User{}, orm1.WithPrimaryKey("UserID", "TenantID"))
 	mappings := builder.Build()
 
 	em := mappings[reflect.TypeOf(User{})]
@@ -412,10 +379,10 @@ func TestBuilder_MultipleEntities(t *testing.T) {
 		PostID int64 `orm1:"parental"`
 	}
 
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(User{}))
-	builder.Register(reflect.TypeOf(Post{}))
-	builder.Register(reflect.TypeOf(Comment{}))
+	builder := orm1.NewRegistry()
+	builder.Register(&User{})
+	builder.Register(&Post{})
+	builder.Register(&Comment{})
 	mappings := builder.Build()
 
 	if len(mappings) != 3 {
@@ -440,12 +407,12 @@ func TestBuilder_MultipleOptions(t *testing.T) {
 		Name   string
 	}
 
-	builder := mapping.NewEntityMappingBuilder()
+	builder := orm1.NewRegistry()
 	builder.Register(
-		reflect.TypeOf(User{}),
-		mapping.WithSchema("public"),
-		mapping.WithTable("users"),
-		mapping.WithPrimaryKey("UserID"),
+		&User{},
+		orm1.WithSchema("public"),
+		orm1.WithTable("users"),
+		orm1.WithPrimaryKey("UserID"),
 	)
 	mappings := builder.Build()
 
@@ -469,14 +436,14 @@ func TestBuilder_AutoDetectChild_Singular(t *testing.T) {
 	}
 
 	type Parent struct {
-		ID        int64 `orm1:"primary"`
+		ID        int64  `orm1:"primary"`
 		MyChild   *Child // No explicit child tag - should auto-detect
 		OtherData string
 	}
 
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(Child{}))
-	builder.Register(reflect.TypeOf(Parent{}))
+	builder := orm1.NewRegistry()
+	builder.Register(&Child{})
+	builder.Register(&Parent{})
 	mappings := builder.Build()
 
 	parentMapping := mappings[reflect.TypeOf(Parent{})]
@@ -502,14 +469,14 @@ func TestBuilder_AutoDetectChild_Plural(t *testing.T) {
 	}
 
 	type Parent struct {
-		ID         int64 `orm1:"primary"`
+		ID         int64    `orm1:"primary"`
 		MyChildren []*Child // No explicit child tag - should auto-detect
 		OtherData  string
 	}
 
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(Child{}))
-	builder.Register(reflect.TypeOf(Parent{}))
+	builder := orm1.NewRegistry()
+	builder.Register(&Child{})
+	builder.Register(&Parent{})
 	mappings := builder.Build()
 
 	parentMapping := mappings[reflect.TypeOf(Parent{})]
@@ -542,8 +509,8 @@ func TestBuilder_IgnoreUnregisteredPtr(t *testing.T) {
 		RegularString string
 	}
 
-	builder := mapping.NewEntityMappingBuilder()
-	builder.Register(reflect.TypeOf(MyEntity{}))
+	builder := orm1.NewRegistry()
+	builder.Register(&MyEntity{})
 	mappings := builder.Build()
 
 	em := mappings[reflect.TypeOf(MyEntity{})]

@@ -18,8 +18,9 @@ func TestTransactionInsertCommitGet(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Cleanup
@@ -78,8 +79,9 @@ func TestTransactionInsertCommitSave(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Cleanup
@@ -128,8 +130,9 @@ func TestTransactionInsertCommitDelete(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			blogPost := &BlogPost{
@@ -171,8 +174,9 @@ func TestTransactionInsertRollbackGet(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			blogPost := &BlogPost{
@@ -219,8 +223,9 @@ func TestTransactionInsertRollbackSave(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Cleanup
@@ -269,8 +274,9 @@ func TestTransactionInsertRollbackDelete(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			blogPost := &BlogPost{
@@ -313,8 +319,9 @@ func TestTransactionDeleteCommitGet(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			blogPost := &BlogPost{
@@ -366,8 +373,9 @@ func TestTransactionDeleteCommitSave(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Cleanup
@@ -420,8 +428,9 @@ func TestTransactionDeleteRollbackGet(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Cleanup
@@ -482,8 +491,9 @@ func TestTransactionDeleteRollbackSave(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Cleanup

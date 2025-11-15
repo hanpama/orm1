@@ -22,8 +22,9 @@ func TestNestedTransactionInnerInsertRollbackOuterCommit(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Cleanup
@@ -118,8 +119,9 @@ func TestNestedTransactionInnerDeleteRollbackOuterCommit(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Cleanup
@@ -198,8 +200,9 @@ func TestNestedTransactionInnerCommitOuterRollback(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Outer transaction begins
@@ -276,8 +279,9 @@ func TestNestedTransactionThreeLevels(t *testing.T) {
 	} {
 		t.Run(drv.name, func(t *testing.T) {
 			ctx := context.Background()
-			factory := orm1.NewSessionFactoryWithDriver(drv.driver)
-			factory.RegisterEntity(&BlogPost{}, orm1.WithTable("blog_posts"))
+			registry := orm1.NewRegistry()
+			registry.Register(&BlogPost{}, orm1.WithTable("blog_posts"))
+			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
 			// Cleanup
