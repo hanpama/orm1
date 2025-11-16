@@ -45,10 +45,12 @@ type OrderItem struct {
 }
 
 // 2. Register entities and create factory
-factory := orm1.NewSessionFactory()
-factory.RegisterEntity(&Order{})
-factory.RegisterEntity(&OrderItem{})
-factory.SetDriver(orm1.NewPostgreSQLDriver(db))
+registry := orm1.NewRegistry()
+registry.Register(&Order{})
+registry.Register(&OrderItem{})
+
+driver := orm1.NewPostgreSQLDriver(db)
+factory := orm1.NewSessionFactory(registry, driver)
 
 // 3. Use in your application
 session := factory.CreateSession()
@@ -192,7 +194,7 @@ type User struct {
   - Field names are automatically mapped to `snake_case` columns.
   - Parental (foreign) keys **must** be explicitly tagged with `orm1:"parental"`.
 
-See `go doc orm1.SessionFactory.RegisterEntity` for a complete tag reference.
+See `go doc orm1.Registry.Register` for a complete tag reference.
 
 ## Performance
 

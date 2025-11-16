@@ -32,10 +32,12 @@
 //	}
 //
 //	// 2. Register entities and create session factory
+//	registry := orm1.NewRegistry()
+//	registry.Register(&User{})
+//	registry.Register(&Post{})
+//
 //	driver := orm1.NewSQLiteDriver(db)
-//	factory := orm1.NewSessionFactoryWithDriver(driver)
-//	factory.RegisterEntity(&User{})
-//	factory.RegisterEntity(&Post{})
+//	factory := orm1.NewSessionFactory(registry, driver)
 //
 //	// 3. Create session
 //	session := factory.CreateSession()
