@@ -2,6 +2,7 @@
 CREATE SCHEMA IF NOT EXISTS orm1_test;
 
 -- Drop existing tables in reverse dependency order
+DROP TABLE IF EXISTS orm1_test.raw_users CASCADE;
 DROP TABLE IF EXISTS orm1_test.blog_post_comments_agg CASCADE;
 DROP TABLE IF EXISTS orm1_test.blog_posts_agg CASCADE;
 DROP TABLE IF EXISTS orm1_test.blog_posts_composite CASCADE;
@@ -146,4 +147,13 @@ CREATE TABLE orm1_test.blog_post_comments_agg (
     content TEXT NOT NULL,
     created_at BIGINT,
     FOREIGN KEY (post_id) REFERENCES orm1_test.blog_posts_agg(id)
+);
+
+-- Raw query test table
+CREATE TABLE orm1_test.raw_users (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT,
+    alt TEXT,
+    ignored TEXT
 );

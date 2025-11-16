@@ -127,3 +127,12 @@ CREATE TABLE blog_post_comments_agg (
     created_at INTEGER,
     FOREIGN KEY (post_id) REFERENCES blog_posts_agg(id)
 );
+
+-- Raw query test table
+CREATE TABLE raw_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT,
+    alt TEXT,
+    ignored TEXT
+);

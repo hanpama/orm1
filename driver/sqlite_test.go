@@ -20,12 +20,12 @@ func TestSQLite(t *testing.T) {
 		t.Skipf("SQLite not available: %v", err)
 	}
 
-	// Setup table (SQLite doesn't use schemas)
-	schema := ""
+	// Setup table with explicit schema (SQLite default schema is "main")
+	schema := "main"
 	table := "test_entity"
 
 	ddl := `
-		CREATE TABLE test_entity (
+		CREATE TABLE main.test_entity (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
 			value INTEGER
