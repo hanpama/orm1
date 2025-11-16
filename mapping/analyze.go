@@ -12,7 +12,7 @@ type FieldMetadata struct {
 	// Structural metadata (from reflect)
 	Name       string
 	Typ        reflect.Type
-	ByteOffset uintptr
+	FieldIndex int // Index of the field in the struct (for reflect.Value.Field)
 
 	// Tag parsing results
 	PrimaryTag    bool
@@ -70,7 +70,7 @@ func AnalyzeStruct(structType reflect.Type) []FieldMetadata {
 		metadata := FieldMetadata{
 			Name:          structField.Name,
 			Typ:           structField.Type,
-			ByteOffset:    structField.Offset,
+			FieldIndex:    i,
 			DefaultColumn: ToSnakeCase(structField.Name),
 		}
 

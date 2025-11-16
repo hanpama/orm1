@@ -25,8 +25,8 @@ func TestMappingBuilder(t *testing.T) {
 			}{},
 			want: &mapping.EntityMapping{
 				FieldMap: map[string]*mapping.Field{
-					"ID":   {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x00},
-					"Name": {Name: "Name", Column: "name", Type: reflect.TypeOf(""), ByteOffset: 0x08},
+					"ID":   {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
+					"Name": {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 1},
 				},
 				ChildMap:    map[string]*mapping.Child{},
 				AllFields:   []string{"ID", "Name"},
@@ -45,9 +45,9 @@ func TestMappingBuilder(t *testing.T) {
 			}{},
 			want: &mapping.EntityMapping{
 				FieldMap: map[string]*mapping.Field{
-					"ID":       {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x00},
-					"ParentID": {Name: "ParentID", Column: "parent_id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x08},
-					"Name":     {Name: "Name", Column: "name", Type: reflect.TypeOf(""), ByteOffset: 0x10},
+					"ID":       {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
+					"ParentID": {Name: "ParentID", Column: "parent_id", Type: reflect.TypeOf(int64(0)), FieldIndex: 1},
+					"Name":     {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 2},
 				},
 				ChildMap:    map[string]*mapping.Child{},
 				AllFields:   []string{"ID", "ParentID", "Name"},
@@ -65,8 +65,8 @@ func TestMappingBuilder(t *testing.T) {
 			}{},
 			want: &mapping.EntityMapping{
 				FieldMap: map[string]*mapping.Field{
-					"ID":       {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x00},
-					"FullName": {Name: "FullName", Column: "full_name", Type: reflect.TypeOf(""), ByteOffset: 0x08},
+					"ID":       {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
+					"FullName": {Name: "FullName", Column: "full_name", Type: reflect.TypeOf(""), FieldIndex: 1},
 				},
 				ChildMap:    map[string]*mapping.Child{},
 				AllFields:   []string{"ID", "FullName"},
@@ -85,9 +85,9 @@ func TestMappingBuilder(t *testing.T) {
 			}{},
 			want: &mapping.EntityMapping{
 				FieldMap: map[string]*mapping.Field{
-					"ID":        {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x00},
-					"Name":      {Name: "Name", Column: "name", Type: reflect.TypeOf(""), ByteOffset: 0x08},
-					"CreatedAt": {Name: "CreatedAt", Column: "created_at", Type: reflect.TypeOf(""), ByteOffset: 0x18},
+					"ID":        {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
+					"Name":      {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 1},
+					"CreatedAt": {Name: "CreatedAt", Column: "created_at", Type: reflect.TypeOf(""), FieldIndex: 2},
 				},
 				ChildMap:    map[string]*mapping.Child{},
 				AllFields:   []string{"ID", "Name", "CreatedAt"},
@@ -106,9 +106,9 @@ func TestMappingBuilder(t *testing.T) {
 			}{},
 			want: &mapping.EntityMapping{
 				FieldMap: map[string]*mapping.Field{
-					"ID":        {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x00},
-					"Name":      {Name: "Name", Column: "name", Type: reflect.TypeOf(""), ByteOffset: 0x08},
-					"UpdatedAt": {Name: "UpdatedAt", Column: "updated_at", Type: reflect.TypeOf(""), ByteOffset: 0x18},
+					"ID":        {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
+					"Name":      {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 1},
+					"UpdatedAt": {Name: "UpdatedAt", Column: "updated_at", Type: reflect.TypeOf(""), FieldIndex: 2},
 				},
 				ChildMap:    map[string]*mapping.Child{},
 				AllFields:   []string{"ID", "Name", "UpdatedAt"},
@@ -127,9 +127,9 @@ func TestMappingBuilder(t *testing.T) {
 			}{},
 			want: &mapping.EntityMapping{
 				FieldMap: map[string]*mapping.Field{
-					"ID":      {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x00},
-					"Name":    {Name: "Name", Column: "name", Type: reflect.TypeOf(""), ByteOffset: 0x08},
-					"Version": {Name: "Version", Column: "version", Type: reflect.TypeOf(int(0)), ByteOffset: 0x18},
+					"ID":      {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
+					"Name":    {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 1},
+					"Version": {Name: "Version", Column: "version", Type: reflect.TypeOf(int(0)), FieldIndex: 2},
 				},
 				ChildMap:    map[string]*mapping.Child{},
 				AllFields:   []string{"ID", "Name", "Version"},
@@ -148,8 +148,8 @@ func TestMappingBuilder(t *testing.T) {
 			}{},
 			want: &mapping.EntityMapping{
 				FieldMap: map[string]*mapping.Field{
-					"ID":   {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x00},
-					"Name": {Name: "Name", Column: "name", Type: reflect.TypeOf(""), ByteOffset: 0x08},
+					"ID":   {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
+					"Name": {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 1},
 				},
 				ChildMap:    map[string]*mapping.Child{},
 				AllFields:   []string{"ID", "Name"},
@@ -169,10 +169,10 @@ func TestMappingBuilder(t *testing.T) {
 			}{},
 			want: &mapping.EntityMapping{
 				FieldMap: map[string]*mapping.Field{
-					"ID":          {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x00},
-					"UserID":      {Name: "UserID", Column: "user_id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x08},
-					"DisplayName": {Name: "DisplayName", Column: "display_name", Type: reflect.TypeOf(""), ByteOffset: 0x10},
-					"Name":        {Name: "Name", Column: "name", Type: reflect.TypeOf(""), ByteOffset: 0x20},
+					"ID":          {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
+					"UserID":      {Name: "UserID", Column: "user_id", Type: reflect.TypeOf(int64(0)), FieldIndex: 1},
+					"DisplayName": {Name: "DisplayName", Column: "display_name", Type: reflect.TypeOf(""), FieldIndex: 2},
+					"Name":        {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 3},
 				},
 				ChildMap:    map[string]*mapping.Child{},
 				AllFields:   []string{"ID", "UserID", "DisplayName", "Name"},
@@ -191,9 +191,9 @@ func TestMappingBuilder(t *testing.T) {
 			}{},
 			want: &mapping.EntityMapping{
 				FieldMap: map[string]*mapping.Field{
-					"ID":       {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x00},
-					"ParentID": {Name: "ParentID", Column: "parent_id", Type: reflect.TypeOf(int64(0)), ByteOffset: 0x08},
-					"Name":     {Name: "Name", Column: "name", Type: reflect.TypeOf(""), ByteOffset: 0x10},
+					"ID":       {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
+					"ParentID": {Name: "ParentID", Column: "parent_id", Type: reflect.TypeOf(int64(0)), FieldIndex: 1},
+					"Name":     {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 2},
 				},
 				ChildMap:    map[string]*mapping.Child{},
 				AllFields:   []string{"ID", "ParentID", "Name"},

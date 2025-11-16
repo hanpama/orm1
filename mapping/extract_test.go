@@ -199,8 +199,8 @@ func TestExtractKey_MixedTypes(t *testing.T) {
 	}
 
 	fieldMap := map[string]*mapping.Field{
-		"IntField":    {Name: "IntField", Column: "int_field", Type: reflect.TypeOf(int64(0)), ByteOffset: 0},
-		"StringField": {Name: "StringField", Column: "string_field", Type: reflect.TypeOf(""), ByteOffset: 8},
+		"IntField":    {Name: "IntField", Column: "int_field", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
+		"StringField": {Name: "StringField", Column: "string_field", Type: reflect.TypeOf(""), FieldIndex: 1},
 	}
 
 	em := mapping.NewEntityMapping(
@@ -250,7 +250,7 @@ func TestExtractKey_PanicOnTooManyFields(t *testing.T) {
 			Name:       name,
 			Column:     name,
 			Type:       reflect.TypeOf(int64(0)),
-			ByteOffset: uintptr(i * 8),
+			FieldIndex: i,
 		}
 	}
 

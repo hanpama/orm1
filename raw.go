@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"unsafe"
 
 	"github.com/hanpama/orm1/mapping"
 	"github.com/hanpama/orm1/sql"
@@ -131,7 +130,7 @@ func (r *RawQuery) ScanAll(ctx context.Context, dest any) error {
 // fieldInfo stores minimal field reflection data needed for scanning
 type fieldInfo struct {
 	typ        reflect.Type
-	byteOffset uintptr
+	fieldIndex int
 }
 
 // prepareScanMetadata analyzes struct and prepares metadata for scanning.
@@ -169,7 +168,7 @@ func (r *RawQuery) prepareScanMetadata(rows Rows, structType reflect.Type) ([]st
 
 		fieldMap[columnName] = fieldInfo{
 			typ:        metadata.Typ,
-			byteOffset: metadata.ByteOffset,
+			fieldIndex: metadata.FieldIndex,
 		}
 	}
 
@@ -192,8 +191,7 @@ func (r *RawQuery) scanStructWithMetadata(dest any, rows Rows, columns []string,
 
 	for i, columnName := range columns {
 		if info, ok := fieldMap[columnName]; ok {
-			p := unsafe.Add(unsafe.Pointer(structVal.UnsafeAddr()), info.byteOffset)
-			fieldPtr := reflect.NewAt(info.typ, p).Interface()
+			fieldPtr := structVal.Field(info.fieldIndex).Addr().Interface()
 			scanDest[i] = fieldPtr
 		} else {
 			// No matching field - scan into a dummy variable to avoid errors
@@ -251,15 +249,14 @@ func (r *RawQuery) scanStruct(dest any, rows Rows) error {
 
 		fieldMap[columnName] = fieldInfo{
 			typ:        metadata.Typ,
-			byteOffset: metadata.ByteOffset,
+			fieldIndex: metadata.FieldIndex,
 		}
 	}
 
 	scanDest := make([]any, len(columns))
 	for i, columnName := range columns {
 		if info, ok := fieldMap[columnName]; ok {
-			p := unsafe.Add(unsafe.Pointer(structVal.UnsafeAddr()), info.byteOffset)
-			fieldPtr := reflect.NewAt(info.typ, p).Interface()
+			fieldPtr := structVal.Field(info.fieldIndex).Addr().Interface()
 			scanDest[i] = fieldPtr
 		} else {
 			// No matching field - scan into a dummy variable to avoid errors
