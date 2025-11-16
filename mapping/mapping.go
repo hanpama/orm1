@@ -10,7 +10,6 @@ package mapping
 
 import (
 	"reflect"
-	"unsafe"
 )
 
 // Field represents a mapping between a struct field and a database column.
@@ -18,22 +17,22 @@ type Field struct {
 	Name       string
 	Column     string
 	Type       reflect.Type
-	ByteOffset uintptr
+	FieldIndex int // Index of the field in the struct for direct reflect access
 }
 
 // GetPtr returns a pointer to the field value in the given entity.
 func (f *Field) GetPtr(entityPtr any) any {
-	return getFieldPtr(entityPtr, f.Type, f.ByteOffset)
+	return getFieldPtr(entityPtr, f.FieldIndex)
 }
 
 // GetValue returns the field value from the given entity.
 func (f *Field) GetValue(entityPtr any) any {
-	return getFieldValue(entityPtr, f.Type, f.ByteOffset)
+	return getFieldValue(entityPtr, f.FieldIndex)
 }
 
 // SetValue sets the field value on the given entity.
 func (f *Field) SetValue(entityPtr any, value any) {
-	setFieldValue(entityPtr, f.Type, f.ByteOffset, value)
+	setFieldValue(entityPtr, f.FieldIndex, value)
 }
 
 // Child represents a parent-child relationship between entities.
@@ -42,20 +41,20 @@ type Child struct {
 	Target     reflect.Type
 	Singular   bool
 	Type       reflect.Type
-	ByteOffset uintptr
+	FieldIndex int // Index of the field in the struct for direct reflect access
 }
 
 // Get returns the child entities from the given parent entity.
 // Returns a slice of child entities, even if the relationship is singular.
 func (c *Child) Get(entityPtr any) []any {
 	if c.Singular {
-		value := getPtrFieldValue(entityPtr, c.Type, c.ByteOffset)
+		value := getPtrFieldValue(entityPtr, c.Type, c.FieldIndex)
 		if value == nil {
 			return []any{}
 		}
 		return []any{value}
 	} else {
-		return getSliceFieldValues(entityPtr, c.Type, c.ByteOffset)
+		return getSliceFieldValues(entityPtr, c.Type, c.FieldIndex)
 	}
 }
 
@@ -65,12 +64,12 @@ func (c *Child) Get(entityPtr any) []any {
 func (c *Child) Set(entityPtr any, children []any) {
 	if c.Singular {
 		if len(children) > 0 {
-			setPtrFieldValue(entityPtr, c.Type, c.ByteOffset, children[0])
+			setPtrFieldValue(entityPtr, c.Type, c.FieldIndex, children[0])
 		} else {
-			setPtrFieldValue(entityPtr, c.Type, c.ByteOffset, nil)
+			setPtrFieldValue(entityPtr, c.Type, c.FieldIndex, nil)
 		}
 	} else {
-		setSliceFieldValues(entityPtr, c.Type, c.ByteOffset, children)
+		setSliceFieldValues(entityPtr, c.Type, c.FieldIndex, children)
 	}
 }
 
@@ -248,49 +247,40 @@ func computeInsertReturning(allFields, insertable, primaryKey []string, fieldMap
 	return columns
 }
 
-// getFieldPtr returns a pointer to a struct field value using unsafe pointer arithmetic.
+// getFieldPtr returns a pointer to a struct field value using reflect.
 // structPtr must be a pointer to a struct.
-// fieldType is the reflect.Type of the field.
-// byteOffset is the field's byte offset within the struct.
-func getFieldPtr(structPtr any, fieldType reflect.Type, byteOffset uintptr) any {
+// fieldIndex is the index of the field in the struct.
+func getFieldPtr(structPtr any, fieldIndex int) any {
 	sv := reflect.ValueOf(structPtr).Elem()
-	p := unsafe.Add(unsafe.Pointer(sv.UnsafeAddr()), byteOffset)
-	return reflect.NewAt(fieldType, p).Interface()
+	return sv.Field(fieldIndex).Addr().Interface()
 }
 
-// getFieldValue returns a struct field value using unsafe pointer arithmetic.
+// getFieldValue returns a struct field value using reflect.
 // structPtr must be a pointer to a struct.
-// fieldType is the reflect.Type of the field.
-// byteOffset is the field's byte offset within the struct.
-func getFieldValue(structPtr any, fieldType reflect.Type, byteOffset uintptr) any {
+// fieldIndex is the index of the field in the struct.
+func getFieldValue(structPtr any, fieldIndex int) any {
 	sv := reflect.ValueOf(structPtr).Elem()
-	p := unsafe.Add(unsafe.Pointer(sv.UnsafeAddr()), byteOffset)
-	return reflect.NewAt(fieldType, p).Elem().Interface()
+	return sv.Field(fieldIndex).Interface()
 }
 
-// setFieldValue sets a struct field value using unsafe pointer arithmetic.
+// setFieldValue sets a struct field value using reflect.
 // structPtr must be a pointer to a struct.
-// fieldType is the reflect.Type of the field.
-// byteOffset is the field's byte offset within the struct.
+// fieldIndex is the index of the field in the struct.
 // value is the new value to set.
-func setFieldValue(structPtr any, fieldType reflect.Type, byteOffset uintptr, value any) {
+func setFieldValue(structPtr any, fieldIndex int, value any) {
 	sv := reflect.ValueOf(structPtr).Elem()
-	p := unsafe.Add(unsafe.Pointer(sv.UnsafeAddr()), byteOffset)
-	fieldPtr := reflect.NewAt(fieldType, p).Elem()
-	fieldPtr.Set(reflect.ValueOf(value))
+	sv.Field(fieldIndex).Set(reflect.ValueOf(value))
 }
 
-// getPtrFieldValue returns the value of a pointer field (*T).
+// getPtrFieldValue returns the value of a pointer field (*T) using reflect.
 // structPtr must be a pointer to a struct.
 // ptrFieldType is the reflect.Type of the field (must be *T).
-// byteOffset is the field's byte offset within the struct.
+// fieldIndex is the index of the field in the struct.
 // Returns the pointer value, or nil if the pointer is nil.
 // Note: Returns untyped nil (not typed nil like (*T)(nil)).
-func getPtrFieldValue(structPtr any, ptrFieldType reflect.Type, byteOffset uintptr) any {
+func getPtrFieldValue(structPtr any, ptrFieldType reflect.Type, fieldIndex int) any {
 	sv := reflect.ValueOf(structPtr).Elem()
-	p := unsafe.Add(unsafe.Pointer(sv.UnsafeAddr()), byteOffset)
-	fieldPtr := reflect.NewAt(ptrFieldType, p).Elem()
-
+	fieldPtr := sv.Field(fieldIndex)
 	// Check for nil pointer and return untyped nil
 	if fieldPtr.IsNil() {
 		return nil
@@ -298,34 +288,30 @@ func getPtrFieldValue(structPtr any, ptrFieldType reflect.Type, byteOffset uintp
 	return fieldPtr.Interface()
 }
 
-// getSliceFieldValues returns the values from a slice field ([]*T or []T).
+// getSliceFieldValues returns the values from a slice field ([]*T or []T) using reflect.
 // structPtr must be a pointer to a struct.
 // sliceFieldType is the reflect.Type of the field (must be slice type).
-// byteOffset is the field's byte offset within the struct.
+// fieldIndex is the index of the field in the struct.
 // Returns []any containing all slice elements (requires reflect for type conversion).
-func getSliceFieldValues(structPtr any, sliceFieldType reflect.Type, byteOffset uintptr) []any {
+func getSliceFieldValues(structPtr any, sliceFieldType reflect.Type, fieldIndex int) []any {
 	sv := reflect.ValueOf(structPtr).Elem()
-	p := unsafe.Add(unsafe.Pointer(sv.UnsafeAddr()), byteOffset)
-	fieldPtr := reflect.NewAt(sliceFieldType, p).Elem()
-
+	fieldPtr := sv.Field(fieldIndex)
 	sliceLen := fieldPtr.Len()
 	result := make([]any, sliceLen)
-	for i := 0; i < sliceLen; i++ {
-		result[i] = fieldPtr.Index(i).Interface()
+	for j := 0; j < sliceLen; j++ {
+		result[j] = fieldPtr.Index(j).Interface()
 	}
 	return result
 }
 
-// setPtrFieldValue sets a pointer field (*T) to the given value.
+// setPtrFieldValue sets a pointer field (*T) to the given value using reflect.
 // structPtr must be a pointer to a struct.
 // ptrFieldType is the reflect.Type of the field (must be *T).
-// byteOffset is the field's byte offset within the struct.
+// fieldIndex is the index of the field in the struct.
 // value is the value to set (may be nil).
-func setPtrFieldValue(structPtr any, ptrFieldType reflect.Type, byteOffset uintptr, value any) {
+func setPtrFieldValue(structPtr any, ptrFieldType reflect.Type, fieldIndex int, value any) {
 	sv := reflect.ValueOf(structPtr).Elem()
-	p := unsafe.Add(unsafe.Pointer(sv.UnsafeAddr()), byteOffset)
-	fieldPtr := reflect.NewAt(ptrFieldType, p).Elem()
-
+	fieldPtr := sv.Field(fieldIndex)
 	if value == nil {
 		fieldPtr.Set(reflect.Zero(ptrFieldType))
 	} else {
@@ -333,19 +319,17 @@ func setPtrFieldValue(structPtr any, ptrFieldType reflect.Type, byteOffset uintp
 	}
 }
 
-// setSliceFieldValues sets a slice field ([]*T or []T) to the given values.
+// setSliceFieldValues sets a slice field ([]*T or []T) to the given values using reflect.
 // structPtr must be a pointer to a struct.
 // sliceFieldType is the reflect.Type of the field (must be slice type).
-// byteOffset is the field's byte offset within the struct.
+// fieldIndex is the index of the field in the struct.
 // values is the slice of values to set (requires reflect for type conversion).
-func setSliceFieldValues(structPtr any, sliceFieldType reflect.Type, byteOffset uintptr, values []any) {
+func setSliceFieldValues(structPtr any, sliceFieldType reflect.Type, fieldIndex int, values []any) {
 	sv := reflect.ValueOf(structPtr).Elem()
-	p := unsafe.Add(unsafe.Pointer(sv.UnsafeAddr()), byteOffset)
-	fieldPtr := reflect.NewAt(sliceFieldType, p).Elem()
-
+	fieldPtr := sv.Field(fieldIndex)
 	sliceVal := reflect.MakeSlice(sliceFieldType, len(values), len(values))
-	for i, val := range values {
-		sliceVal.Index(i).Set(reflect.ValueOf(val))
+	for j, val := range values {
+		sliceVal.Index(j).Set(reflect.ValueOf(val))
 	}
 	fieldPtr.Set(sliceVal)
 }

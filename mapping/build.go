@@ -105,7 +105,7 @@ func buildSingleMapping(
 				Target:     childTarget,
 				Singular:   childSingular,
 				Type:       fieldType,
-				ByteOffset: metadata.ByteOffset,
+				FieldIndex: metadata.FieldIndex,
 			}
 			childMap[fieldName] = &child
 			continue
@@ -128,7 +128,7 @@ func buildSingleMapping(
 			Name:       metadata.Name,
 			Column:     columnName,
 			Type:       metadata.Typ,
-			ByteOffset: metadata.ByteOffset,
+			FieldIndex: metadata.FieldIndex,
 		}
 
 		fieldMap[fieldName] = &field
