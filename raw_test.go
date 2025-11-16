@@ -2,20 +2,27 @@ package orm1_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hanpama/orm1"
 	"github.com/hanpama/orm1/driver"
 )
 
-// RawSimpleAuto - struct for raw query results (no ORM tags)
-type RawSimpleAuto struct {
-	ID       int64
-	Name     string
-	Nullable *string
+// RawUser - basic struct for E2E testing
+type RawUser struct {
+	ID        int64
+	Name      string
+	Email     *string    // Nullable field
+	Ignored   string     `orm1:"-"`          // Should be ignored
+	CustomCol string     `orm1:"column:alt"` // Custom column name
+	Child     *RawUser   `orm1:"child"`      // Should be skipped (child tag)
+	Slice     []string   // Should be skipped (slice)
+	Pointer   *RawUser   // Should be skipped (struct pointer)
 }
 
-func TestRawQueryScanAll(t *testing.T) {
+// TestRawQuery_ScanOne tests single-row scanning with all field mapping features
+func TestRawQuery_ScanOne(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
 		driver driver.Driver
@@ -29,429 +36,215 @@ func TestRawQueryScanAll(t *testing.T) {
 			factory := orm1.NewSessionFactory(registry, drv.driver)
 			session := factory.CreateSession()
 
-			// Insert test data using raw query
-			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?), (?, ?)",
-				"Alice", "nullable1", "Bob", "nullable2", "Charlie", nil)
-			_, err := insertQuery.Exec(ctx)
+			// Setup: Insert with custom column name
+			email := "user@example.com"
+			_, err := orm1.NewRawQuery(session,
+				"INSERT INTO raw_users (name, email, alt, ignored) VALUES (?, ?, ?, ?)",
+				"Alice", email, "custom_value", "should_be_ignored").Exec(ctx)
 			if err != nil {
 				t.Fatalf("Insert failed: %v", err)
 			}
 
-			// Test ScanAll with parameter interpolation
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name IN (?, ?, ?) ORDER BY name", "Alice", "Bob", "Charlie")
+			// Test: ScanOne with all field types
+			var result RawUser
+			err = orm1.NewRawQuery(session,
+				"SELECT id, name, email, alt, ignored as unmapped FROM raw_users WHERE name = ?",
+				"Alice").ScanOne(ctx, &result)
+			if err != nil {
+				t.Fatalf("ScanOne failed: %v", err)
+			}
 
-			var results []*RawSimpleAuto
-			err = rawQuery.ScanAll(ctx, &results)
+			// Verify: Regular fields
+			if result.Name != "Alice" {
+				t.Errorf("Expected name 'Alice', got %v", result.Name)
+			}
+
+			// Verify: Nullable field
+			if result.Email == nil || *result.Email != email {
+				t.Errorf("Expected email '%s', got %v", email, result.Email)
+			}
+
+			// Verify: Custom column name
+			if result.CustomCol != "custom_value" {
+				t.Errorf("Expected CustomCol 'custom_value', got %v", result.CustomCol)
+			}
+
+			// Verify: Ignored field remains zero value
+			if result.Ignored != "" {
+				t.Errorf("Expected Ignored to be empty, got %v", result.Ignored)
+			}
+
+			// Verify: Child/Slice/Pointer fields remain zero value (should be filtered)
+			if result.Child != nil {
+				t.Errorf("Expected Child to be nil, got %v", result.Child)
+			}
+			if result.Slice != nil {
+				t.Errorf("Expected Slice to be nil, got %v", result.Slice)
+			}
+			if result.Pointer != nil {
+				t.Errorf("Expected Pointer to be nil, got %v", result.Pointer)
+			}
+
+			// Cleanup
+			orm1.NewRawQuery(session, "DELETE FROM raw_users WHERE name = ?", "Alice").Exec(ctx)
+		})
+	}
+}
+
+// TestRawQuery_ScanOne_Empty tests empty result handling
+func TestRawQuery_ScanOne_Empty(t *testing.T) {
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
+			ctx := context.Background()
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
+			session := factory.CreateSession()
+
+			// Test: ScanOne with no results should return nil without error
+			var result RawUser
+			err := orm1.NewRawQuery(session,
+				"SELECT id, name, email, alt FROM raw_users WHERE name = ?",
+				"NonExistent").ScanOne(ctx, &result)
+			if err != nil {
+				t.Fatalf("ScanOne should succeed with empty result, got error: %v", err)
+			}
+
+			// Verify: Result remains zero-valued
+			if result.Name != "" {
+				t.Errorf("Expected empty result, got name: %v", result.Name)
+			}
+		})
+	}
+}
+
+// TestRawQuery_ScanOne_Validation tests input validation
+func TestRawQuery_ScanOne_Validation(t *testing.T) {
+	ctx := context.Background()
+	registry := orm1.NewRegistry()
+	factory := orm1.NewSessionFactory(registry, sqliteDriver)
+	session := factory.CreateSession()
+
+	query := orm1.NewRawQuery(session, "SELECT 1")
+
+	// Not a pointer
+	var notPointer RawUser
+	err := query.ScanOne(ctx, notPointer)
+	if err == nil || !strings.Contains(err.Error(), "must be a pointer to struct") {
+		t.Errorf("Expected 'must be a pointer to struct' error, got: %v", err)
+	}
+
+	// Pointer to non-struct
+	var notStruct string
+	err = query.ScanOne(ctx, &notStruct)
+	if err == nil || !strings.Contains(err.Error(), "must be a pointer to struct") {
+		t.Errorf("Expected 'must be a pointer to struct' error, got: %v", err)
+	}
+}
+
+// TestRawQuery_ScanAll tests multi-row scanning with field filtering
+func TestRawQuery_ScanAll(t *testing.T) {
+	for _, drv := range []struct {
+		name   string
+		driver driver.Driver
+	}{
+		{"sqlite", sqliteDriver},
+		{"postgres", postgresDriver},
+	} {
+		t.Run(drv.name, func(t *testing.T) {
+			ctx := context.Background()
+			registry := orm1.NewRegistry()
+			factory := orm1.NewSessionFactory(registry, drv.driver)
+			session := factory.CreateSession()
+
+			// Setup: Insert multiple rows with NULL values
+			email1 := "alice@example.com"
+			_, err := orm1.NewRawQuery(session,
+				"INSERT INTO raw_users (name, email, alt) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)",
+				"Alice", email1, "alt1",
+				"Bob", nil, "alt2",
+				"Charlie", "charlie@example.com", "alt3").Exec(ctx)
+			if err != nil {
+				t.Fatalf("Insert failed: %v", err)
+			}
+
+			// Test: ScanAll with custom column, nullable, and unmapped column
+			var results []*RawUser
+			err = orm1.NewRawQuery(session,
+				"SELECT id, name, email, alt, name as unmapped_col FROM raw_users ORDER BY name").ScanAll(ctx, &results)
 			if err != nil {
 				t.Fatalf("ScanAll failed: %v", err)
 			}
 
+			// Verify: Count
 			if len(results) != 3 {
 				t.Fatalf("Expected 3 results, got %d", len(results))
 			}
 
-			// Check first row (Alice)
+			// Verify: First row with non-NULL email
 			if results[0].Name != "Alice" {
 				t.Errorf("Expected name 'Alice', got %v", results[0].Name)
 			}
-			if results[0].Nullable == nil || *results[0].Nullable != "nullable1" {
-				t.Errorf("Expected nullable 'nullable1', got %v", results[0].Nullable)
+			if results[0].Email == nil || *results[0].Email != email1 {
+				t.Errorf("Expected email '%s', got %v", email1, results[0].Email)
+			}
+			if results[0].CustomCol != "alt1" {
+				t.Errorf("Expected CustomCol 'alt1', got %v", results[0].CustomCol)
 			}
 
-			// Check second row (Bob)
+			// Verify: Second row with NULL email
 			if results[1].Name != "Bob" {
 				t.Errorf("Expected name 'Bob', got %v", results[1].Name)
 			}
+			if results[1].Email != nil {
+				t.Errorf("Expected email nil, got %v", *results[1].Email)
+			}
 
 			// Cleanup
-			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?, ?)", "Alice", "Bob", "Charlie")
-			cleanupQuery.Exec(ctx)
+			orm1.NewRawQuery(session, "DELETE FROM raw_users").Exec(ctx)
 		})
 	}
 }
 
-func TestRawQueryScanOne(t *testing.T) {
-	for _, drv := range []struct {
-		name   string
-		driver driver.Driver
-	}{
-		{"sqlite", sqliteDriver},
-		{"postgres", postgresDriver},
-	} {
-		t.Run(drv.name, func(t *testing.T) {
-			ctx := context.Background()
-			registry := orm1.NewRegistry()
-			factory := orm1.NewSessionFactory(registry, drv.driver)
-			session := factory.CreateSession()
+// TestRawQuery_ScanAll_Validation tests input validation
+func TestRawQuery_ScanAll_Validation(t *testing.T) {
+	ctx := context.Background()
+	registry := orm1.NewRegistry()
+	factory := orm1.NewSessionFactory(registry, sqliteDriver)
+	session := factory.CreateSession()
 
-			// Insert test data
-			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?)", "Alice", "test_value")
-			_, err := insertQuery.Exec(ctx)
-			if err != nil {
-				t.Fatalf("Insert failed: %v", err)
-			}
+	query := orm1.NewRawQuery(session, "SELECT 1")
 
-			// Test ScanOne
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name = ?", "Alice")
-
-			var result RawSimpleAuto
-			err = rawQuery.ScanOne(ctx, &result)
-			if err != nil {
-				t.Fatalf("ScanOne failed: %v", err)
-			}
-
-			if result.Name != "Alice" {
-				t.Errorf("Expected name 'Alice', got %v", result.Name)
-			}
-			if result.Nullable == nil || *result.Nullable != "test_value" {
-				t.Errorf("Expected nullable 'test_value', got %v", result.Nullable)
-			}
-
-			// Cleanup
-			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name = ?", "Alice")
-			cleanupQuery.Exec(ctx)
-		})
+	// Not a pointer
+	var notPointer []RawUser
+	err := query.ScanAll(ctx, notPointer)
+	if err == nil || !strings.Contains(err.Error(), "must be a pointer to slice") {
+		t.Errorf("Expected 'must be a pointer to slice' error, got: %v", err)
 	}
-}
 
-func TestRawQueryScanOneEmpty(t *testing.T) {
-	for _, drv := range []struct {
-		name   string
-		driver driver.Driver
-	}{
-		{"sqlite", sqliteDriver},
-		{"postgres", postgresDriver},
-	} {
-		t.Run(drv.name, func(t *testing.T) {
-			ctx := context.Background()
-			registry := orm1.NewRegistry()
-			factory := orm1.NewSessionFactory(registry, drv.driver)
-			session := factory.CreateSession()
-
-			// Test ScanOne with no results
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name = ?", "NonExistentUser")
-
-			var result RawSimpleAuto
-			err := rawQuery.ScanOne(ctx, &result)
-			if err != nil {
-				t.Fatalf("ScanOne failed: %v", err)
-			}
-
-			// When no rows, struct should remain zero-valued
-			if result.Name != "" {
-				t.Errorf("Expected empty name, got %v", result.Name)
-			}
-		})
+	// Pointer to non-slice
+	var notSlice RawUser
+	err = query.ScanAll(ctx, &notSlice)
+	if err == nil || !strings.Contains(err.Error(), "must be a pointer to slice") {
+		t.Errorf("Expected 'must be a pointer to slice' error, got: %v", err)
 	}
-}
 
-func TestRawQueryMultipleParams(t *testing.T) {
-	for _, drv := range []struct {
-		name   string
-		driver driver.Driver
-	}{
-		{"sqlite", sqliteDriver},
-		{"postgres", postgresDriver},
-	} {
-		t.Run(drv.name, func(t *testing.T) {
-			ctx := context.Background()
-			registry := orm1.NewRegistry()
-			factory := orm1.NewSessionFactory(registry, drv.driver)
-			session := factory.CreateSession()
-
-			// Insert test data
-			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?), (?, ?)",
-				"Alice", "a", "Bob", "b", "Charlie", "c")
-			_, err := insertQuery.Exec(ctx)
-			if err != nil {
-				t.Fatalf("Insert failed: %v", err)
-			}
-
-			// Test with multiple parameters
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name >= ? AND name <= ? ORDER BY name", "Alice", "Bob")
-
-			var results []*RawSimpleAuto
-			err = rawQuery.ScanAll(ctx, &results)
-			if err != nil {
-				t.Fatalf("ScanAll failed: %v", err)
-			}
-
-			if len(results) != 2 {
-				t.Fatalf("Expected 2 results, got %d", len(results))
-			}
-
-			if results[0].Name != "Alice" {
-				t.Errorf("Expected name 'Alice', got %v", results[0].Name)
-			}
-			if results[1].Name != "Bob" {
-				t.Errorf("Expected name 'Bob', got %v", results[1].Name)
-			}
-
-			// Cleanup
-			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?, ?)", "Alice", "Bob", "Charlie")
-			cleanupQuery.Exec(ctx)
-		})
+	// Slice elements not pointers
+	var notPointers []RawUser
+	err = query.ScanAll(ctx, &notPointers)
+	if err == nil || !strings.Contains(err.Error(), "must be pointers") {
+		t.Errorf("Expected 'must be pointers' error, got: %v", err)
 	}
-}
 
-func TestRawQueryWithNullValues(t *testing.T) {
-	for _, drv := range []struct {
-		name   string
-		driver driver.Driver
-	}{
-		{"sqlite", sqliteDriver},
-		{"postgres", postgresDriver},
-	} {
-		t.Run(drv.name, func(t *testing.T) {
-			ctx := context.Background()
-			registry := orm1.NewRegistry()
-			factory := orm1.NewSessionFactory(registry, drv.driver)
-			session := factory.CreateSession()
-
-			// Insert test data with NULL nullable
-			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?)",
-				"Alice", "has_value", "Bob", nil)
-			_, err := insertQuery.Exec(ctx)
-			if err != nil {
-				t.Fatalf("Insert failed: %v", err)
-			}
-
-			// Test query that includes NULL values
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name IN (?, ?) ORDER BY name", "Alice", "Bob")
-
-			var results []*RawSimpleAuto
-			err = rawQuery.ScanAll(ctx, &results)
-			if err != nil {
-				t.Fatalf("ScanAll failed: %v", err)
-			}
-
-			if len(results) != 2 {
-				t.Fatalf("Expected 2 results, got %d", len(results))
-			}
-
-			// Check that non-NULL is handled properly
-			if results[0].Nullable == nil || *results[0].Nullable != "has_value" {
-				t.Errorf("Expected nullable 'has_value', got %v", results[0].Nullable)
-			}
-			// Check that NULL is handled properly
-			if results[1].Nullable != nil {
-				t.Errorf("Expected nullable nil, got %v", *results[1].Nullable)
-			}
-
-			// Cleanup
-			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?)", "Alice", "Bob")
-			cleanupQuery.Exec(ctx)
-		})
-	}
-}
-
-func TestRawQueryRows(t *testing.T) {
-	for _, drv := range []struct {
-		name   string
-		driver driver.Driver
-	}{
-		{"sqlite", sqliteDriver},
-		{"postgres", postgresDriver},
-	} {
-		t.Run(drv.name, func(t *testing.T) {
-			ctx := context.Background()
-			registry := orm1.NewRegistry()
-			factory := orm1.NewSessionFactory(registry, drv.driver)
-			session := factory.CreateSession()
-
-			// Insert test data
-			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?)",
-				"Alice", "a", "Bob", "b")
-			_, err := insertQuery.Exec(ctx)
-			if err != nil {
-				t.Fatalf("Insert failed: %v", err)
-			}
-
-			// Test Rows for manual iteration
-			rawQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name IN (?, ?) ORDER BY name", "Alice", "Bob")
-
-			rows, err := rawQuery.Rows(ctx)
-			if err != nil {
-				t.Fatalf("Rows failed: %v", err)
-			}
-			defer rows.Close()
-
-			var users []RawSimpleAuto
-			for rows.Next() {
-				var user RawSimpleAuto
-				if err := rows.Scan(&user.ID, &user.Name, &user.Nullable); err != nil {
-					t.Fatalf("Scan failed: %v", err)
-				}
-				users = append(users, user)
-			}
-
-			if len(users) != 2 {
-				t.Fatalf("Expected 2 users, got %d", len(users))
-			}
-
-			if users[0].Name != "Alice" {
-				t.Errorf("Expected first user 'Alice', got %v", users[0].Name)
-			}
-			if users[1].Name != "Bob" {
-				t.Errorf("Expected second user 'Bob', got %v", users[1].Name)
-			}
-
-			// Cleanup
-			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?)", "Alice", "Bob")
-			cleanupQuery.Exec(ctx)
-		})
-	}
-}
-
-func TestRawQueryExec(t *testing.T) {
-	for _, drv := range []struct {
-		name   string
-		driver driver.Driver
-	}{
-		{"sqlite", sqliteDriver},
-		{"postgres", postgresDriver},
-	} {
-		t.Run(drv.name, func(t *testing.T) {
-			ctx := context.Background()
-			registry := orm1.NewRegistry()
-			factory := orm1.NewSessionFactory(registry, drv.driver)
-			session := factory.CreateSession()
-
-			// Insert test data
-			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?), (?, ?)",
-				"Alice", "a", "Bob", "b", "Charlie", "c")
-			_, err := insertQuery.Exec(ctx)
-			if err != nil {
-				t.Fatalf("Insert failed: %v", err)
-			}
-
-			// Test UPDATE with Exec
-			rawQuery := orm1.NewRawQuery(session, "UPDATE simple_auto SET nullable = ? WHERE name = ?", "updated", "Alice")
-			affected, err := rawQuery.Exec(ctx)
-			if err != nil {
-				t.Fatalf("Exec failed: %v", err)
-			}
-
-			if affected != 1 {
-				t.Errorf("Expected 1 row affected, got %d", affected)
-			}
-
-			// Verify the update
-			var result RawSimpleAuto
-			verifyQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name = ?", "Alice")
-			err = verifyQuery.ScanOne(ctx, &result)
-			if err != nil {
-				t.Fatalf("ScanOne failed: %v", err)
-			}
-
-			if result.Nullable == nil || *result.Nullable != "updated" {
-				t.Errorf("Expected nullable 'updated' after update, got %v", result.Nullable)
-			}
-
-			// Cleanup
-			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?, ?)", "Alice", "Bob", "Charlie")
-			cleanupQuery.Exec(ctx)
-		})
-	}
-}
-
-func TestRawQueryExecDelete(t *testing.T) {
-	for _, drv := range []struct {
-		name   string
-		driver driver.Driver
-	}{
-		{"sqlite", sqliteDriver},
-		{"postgres", postgresDriver},
-	} {
-		t.Run(drv.name, func(t *testing.T) {
-			ctx := context.Background()
-			registry := orm1.NewRegistry()
-			factory := orm1.NewSessionFactory(registry, drv.driver)
-			session := factory.CreateSession()
-
-			// Insert test data
-			insertQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?), (?, ?), (?, ?)",
-				"Alice", "a", "Bob", "b", "Charlie", "c")
-			_, err := insertQuery.Exec(ctx)
-			if err != nil {
-				t.Fatalf("Insert failed: %v", err)
-			}
-
-			// Test DELETE with Exec
-			rawQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name = ?", "Bob")
-			affected, err := rawQuery.Exec(ctx)
-			if err != nil {
-				t.Fatalf("Exec failed: %v", err)
-			}
-
-			if affected != 1 {
-				t.Errorf("Expected 1 row affected, got %d", affected)
-			}
-
-			// Verify the delete
-			var results []*RawSimpleAuto
-			verifyQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name IN (?, ?, ?) ORDER BY name", "Alice", "Bob", "Charlie")
-			err = verifyQuery.ScanAll(ctx, &results)
-			if err != nil {
-				t.Fatalf("ScanAll failed: %v", err)
-			}
-
-			if len(results) != 2 {
-				t.Fatalf("Expected 2 users remaining, got %d", len(results))
-			}
-
-			// Cleanup
-			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name IN (?, ?)", "Alice", "Charlie")
-			cleanupQuery.Exec(ctx)
-		})
-	}
-}
-
-func TestRawQueryExecInsert(t *testing.T) {
-	for _, drv := range []struct {
-		name   string
-		driver driver.Driver
-	}{
-		{"sqlite", sqliteDriver},
-		{"postgres", postgresDriver},
-	} {
-		t.Run(drv.name, func(t *testing.T) {
-			ctx := context.Background()
-			registry := orm1.NewRegistry()
-			factory := orm1.NewSessionFactory(registry, drv.driver)
-			session := factory.CreateSession()
-
-			// Test INSERT with Exec (use ? placeholders for all backends)
-			rawQuery := orm1.NewRawQuery(session, "INSERT INTO simple_auto (name, nullable) VALUES (?, ?)", "Dave", "dave_value")
-
-			affected, err := rawQuery.Exec(ctx)
-			if err != nil {
-				t.Fatalf("Exec failed: %v", err)
-			}
-
-			if affected != 1 {
-				t.Errorf("Expected 1 row affected, got %d", affected)
-			}
-
-			// Verify the insert
-			var results []*RawSimpleAuto
-			verifyQuery := orm1.NewRawQuery(session, "SELECT id, name, nullable FROM simple_auto WHERE name = ?", "Dave")
-			err = verifyQuery.ScanAll(ctx, &results)
-			if err != nil {
-				t.Fatalf("ScanAll failed: %v", err)
-			}
-
-			if len(results) != 1 {
-				t.Fatalf("Expected 1 user, got %d", len(results))
-			}
-
-			if results[0].Name != "Dave" || results[0].Nullable == nil || *results[0].Nullable != "dave_value" {
-				t.Errorf("Expected Dave with nullable 'dave_value', got %s with nullable %v", results[0].Name, results[0].Nullable)
-			}
-
-			// Cleanup
-			cleanupQuery := orm1.NewRawQuery(session, "DELETE FROM simple_auto WHERE name = ?", "Dave")
-			cleanupQuery.Exec(ctx)
-		})
+	// Slice elements not structs
+	var notStructs []*string
+	err = query.ScanAll(ctx, &notStructs)
+	if err == nil || !strings.Contains(err.Error(), "must be pointers to structs") {
+		t.Errorf("Expected 'must be pointers to structs' error, got: %v", err)
 	}
 }
