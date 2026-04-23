@@ -6,7 +6,7 @@
 //
 // Most users will not need to use this package directly. It is primarily for developers
 // implementing custom database backends.
-package sql
+package orm1
 
 import (
 	"fmt"

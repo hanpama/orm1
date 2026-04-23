@@ -1,10 +1,12 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
 	"testing"
 
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 )
 
 // Test Registry.Register with invalid inputs
@@ -61,7 +63,7 @@ func TestRegistryRegisterPanicOnInvalidInput(t *testing.T) {
 func TestCreateSessionWithRegistryAndDriver(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},

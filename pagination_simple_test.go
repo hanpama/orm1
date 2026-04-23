@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
@@ -6,7 +9,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 )
 
 // Helper function to insert blog post test data
@@ -42,7 +44,7 @@ func cleanupBlogPostTestData(ctx context.Context, session *orm1.Session) {
 func TestPaginationSimpleAscForwardNullsLast(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -119,7 +121,7 @@ func TestPaginationSimpleAscForwardNullsLast(t *testing.T) {
 func TestPaginationSimpleAscBackwardNullsLast(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -195,7 +197,7 @@ func TestPaginationSimpleAscBackwardNullsLast(t *testing.T) {
 func TestPaginationSimpleAscForwardNullsFirst(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -239,7 +241,7 @@ func TestPaginationSimpleAscForwardNullsFirst(t *testing.T) {
 func TestPaginationSimpleDescForwardNullsLast(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -283,7 +285,7 @@ func TestPaginationSimpleDescForwardNullsLast(t *testing.T) {
 func TestPaginationSimpleAscBackwardNullsFirst(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -343,7 +345,7 @@ func TestPaginationSimpleAscBackwardNullsFirst(t *testing.T) {
 func TestPaginationSimpleDescBackwardNullsLast(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -403,7 +405,7 @@ func TestPaginationSimpleDescBackwardNullsLast(t *testing.T) {
 func TestPaginationSimpleDescForwardNullsFirst(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -463,7 +465,7 @@ func TestPaginationSimpleDescForwardNullsFirst(t *testing.T) {
 func TestPaginationSimpleDescBackwardNullsFirst(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -528,7 +530,7 @@ func TestPaginationSimpleDescBackwardNullsFirst(t *testing.T) {
 func TestPaginationSimpleAscDefaultNulls(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -590,7 +592,7 @@ func TestPaginationSimpleAscDefaultNulls(t *testing.T) {
 func TestPaginationSimpleDescDefaultNulls(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -651,7 +653,7 @@ func TestPaginationSimpleDescDefaultNulls(t *testing.T) {
 func TestPaginationSimpleAscBackwardDefaultNulls(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -711,7 +713,7 @@ func TestPaginationSimpleAscBackwardDefaultNulls(t *testing.T) {
 func TestPaginationSimpleDescBackwardDefaultNulls(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},

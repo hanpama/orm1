@@ -1,14 +1,11 @@
-package driver_test
+package orm1
 
 import (
 	"context"
 	"testing"
-
-	"github.com/hanpama/orm1/driver"
-	"github.com/hanpama/orm1/key"
 )
 
-func testTransactionContracts(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testTransactionContracts(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	t.Run("Begin_StateTransition", func(t *testing.T) {
 		testBeginStateTransition(t, ctx, backend)
 	})
@@ -66,7 +63,7 @@ func testTransactionContracts(t *testing.T, ctx context.Context, backend driver.
 	})
 }
 
-func testBeginStateTransition(t *testing.T, ctx context.Context, backend driver.Backend) {
+func testBeginStateTransition(t *testing.T, ctx context.Context, backend Backend) {
 	// Contract: Begin transitions from Initial to InTransaction
 	err := backend.Begin(ctx)
 	if err != nil {
@@ -80,7 +77,7 @@ func testBeginStateTransition(t *testing.T, ctx context.Context, backend driver.
 	}
 }
 
-func testBeginTxWithOptions(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testBeginTxWithOptions(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: BeginTx accepts transaction options (isolation level, read-only)
 
 	// Test 1: BeginTx with nil options
@@ -91,8 +88,8 @@ func testBeginTxWithOptions(t *testing.T, ctx context.Context, backend driver.Ba
 	backend.Commit(ctx)
 
 	// Test 2: BeginTx with serializable isolation level
-	opts := &driver.TxOptions{
-		Isolation: driver.LevelSerializable,
+	opts := &TxOptions{
+		Isolation: LevelSerializable,
 		ReadOnly:  false,
 	}
 	err = backend.BeginTx(ctx, opts)
@@ -101,7 +98,7 @@ func testBeginTxWithOptions(t *testing.T, ctx context.Context, backend driver.Ba
 	}
 
 	// Verify transaction works by inserting data
-	insertOp := driver.InsertOp{
+	insertOp := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -118,8 +115,8 @@ func testBeginTxWithOptions(t *testing.T, ctx context.Context, backend driver.Ba
 	backend.Commit(ctx)
 
 	// Test 3: BeginTx with read-only option and default isolation
-	optsReadOnly := &driver.TxOptions{
-		Isolation: driver.LevelDefault,
+	optsReadOnly := &TxOptions{
+		Isolation: LevelDefault,
 		ReadOnly:  true,
 	}
 	err = backend.BeginTx(ctx, optsReadOnly)
@@ -129,16 +126,16 @@ func testBeginTxWithOptions(t *testing.T, ctx context.Context, backend driver.Ba
 	backend.Rollback(ctx)
 
 	// Test 4: BeginTx with various isolation levels
-	isolationLevels := []driver.IsolationLevel{
-		driver.LevelReadUncommitted,
-		driver.LevelReadCommitted,
-		driver.LevelWriteCommitted,
-		driver.LevelRepeatableRead,
-		driver.LevelSnapshot,
-		driver.LevelLinearizable,
+	isolationLevels := []IsolationLevel{
+		LevelReadUncommitted,
+		LevelReadCommitted,
+		LevelWriteCommitted,
+		LevelRepeatableRead,
+		LevelSnapshot,
+		LevelLinearizable,
 	}
 	for _, level := range isolationLevels {
-		opts := &driver.TxOptions{
+		opts := &TxOptions{
 			Isolation: level,
 			ReadOnly:  false,
 		}
@@ -153,7 +150,7 @@ func testBeginTxWithOptions(t *testing.T, ctx context.Context, backend driver.Ba
 	}
 }
 
-func testCommitNoTransaction(t *testing.T, ctx context.Context, backend driver.Backend) {
+func testCommitNoTransaction(t *testing.T, ctx context.Context, backend Backend) {
 	// Contract: Commit without transaction returns error
 	err := backend.Commit(ctx)
 	if err == nil {
@@ -161,7 +158,7 @@ func testCommitNoTransaction(t *testing.T, ctx context.Context, backend driver.B
 	}
 }
 
-func testRollbackNoTransaction(t *testing.T, ctx context.Context, backend driver.Backend) {
+func testRollbackNoTransaction(t *testing.T, ctx context.Context, backend Backend) {
 	// Contract: Rollback without transaction returns error
 	err := backend.Rollback(ctx)
 	if err == nil {
@@ -169,7 +166,7 @@ func testRollbackNoTransaction(t *testing.T, ctx context.Context, backend driver
 	}
 }
 
-func testCommitStateTransition(t *testing.T, ctx context.Context, backend driver.Backend) {
+func testCommitStateTransition(t *testing.T, ctx context.Context, backend Backend) {
 	// Contract: Commit transitions from InTransaction to Initial
 	if err := backend.Begin(ctx); err != nil {
 		t.Fatalf("Begin failed: %v", err)
@@ -186,7 +183,7 @@ func testCommitStateTransition(t *testing.T, ctx context.Context, backend driver
 	backend.Rollback(ctx)
 }
 
-func testRollbackStateTransition(t *testing.T, ctx context.Context, backend driver.Backend) {
+func testRollbackStateTransition(t *testing.T, ctx context.Context, backend Backend) {
 	// Contract: Rollback transitions from InTransaction to Initial
 	if err := backend.Begin(ctx); err != nil {
 		t.Fatalf("Begin failed: %v", err)
@@ -203,13 +200,13 @@ func testRollbackStateTransition(t *testing.T, ctx context.Context, backend driv
 	backend.Rollback(ctx)
 }
 
-func testTransactionCommitVisibility(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testTransactionCommitVisibility(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: Committed changes are visible
 	if err := backend.Begin(ctx); err != nil {
 		t.Fatalf("Begin failed: %v", err)
 	}
 
-	insertOp := driver.InsertOp{
+	insertOp := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -236,12 +233,12 @@ func testTransactionCommitVisibility(t *testing.T, ctx context.Context, backend 
 	}
 
 	// Verify data is visible after commit
-	selectOp := driver.SelectOp{
+	selectOp := SelectOp{
 		Select:     []string{"name"},
 		FromSchema: schema,
 		FromTable:  table,
 		KeyColumns: []string{"id"},
-		Keys:       []key.Key{key.New1(insertedID)},
+		Keys:       []Key{New1(insertedID)},
 	}
 
 	rows, err = backend.Select(ctx, selectOp)
@@ -264,13 +261,13 @@ func testTransactionCommitVisibility(t *testing.T, ctx context.Context, backend 
 	}
 }
 
-func testTransactionRollbackInvisibility(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testTransactionRollbackInvisibility(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: Rolled back changes are not visible
 	if err := backend.Begin(ctx); err != nil {
 		t.Fatalf("Begin failed: %v", err)
 	}
 
-	insertOp := driver.InsertOp{
+	insertOp := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -297,12 +294,12 @@ func testTransactionRollbackInvisibility(t *testing.T, ctx context.Context, back
 	}
 
 	// Verify data is NOT visible after rollback
-	selectOp := driver.SelectOp{
+	selectOp := SelectOp{
 		Select:     []string{"name"},
 		FromSchema: schema,
 		FromTable:  table,
 		KeyColumns: []string{"id"},
-		Keys:       []key.Key{key.New1(insertedID)},
+		Keys:       []Key{New1(insertedID)},
 	}
 
 	rows, err = backend.Select(ctx, selectOp)
@@ -321,7 +318,7 @@ func testTransactionRollbackInvisibility(t *testing.T, ctx context.Context, back
 	}
 }
 
-func testSavepointNoTransaction(t *testing.T, ctx context.Context, backend driver.Backend) {
+func testSavepointNoTransaction(t *testing.T, ctx context.Context, backend Backend) {
 	// Contract: Savepoint without transaction returns error
 	err := backend.Savepoint(ctx, "sp1")
 	if err == nil {
@@ -329,14 +326,14 @@ func testSavepointNoTransaction(t *testing.T, ctx context.Context, backend drive
 	}
 }
 
-func testSavepointRollbackReverts(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testSavepointRollbackReverts(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: Rollback to savepoint reverts changes after savepoint
 	if err := backend.Begin(ctx); err != nil {
 		t.Fatalf("Begin failed: %v", err)
 	}
 
 	// Insert 1
-	insertOp1 := driver.InsertOp{
+	insertOp1 := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -361,7 +358,7 @@ func testSavepointRollbackReverts(t *testing.T, ctx context.Context, backend dri
 	}
 
 	// Insert 2
-	insertOp2 := driver.InsertOp{
+	insertOp2 := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -391,12 +388,12 @@ func testSavepointRollbackReverts(t *testing.T, ctx context.Context, backend dri
 	}
 
 	// Verify: id1 should exist, id2 should not
-	selectOp := driver.SelectOp{
+	selectOp := SelectOp{
 		Select:     []string{"id"},
 		FromSchema: schema,
 		FromTable:  table,
 		KeyColumns: []string{"id"},
-		Keys:       []key.Key{key.New1(id1), key.New1(id2)},
+		Keys:       []Key{New1(id1), New1(id2)},
 	}
 
 	rows, err = backend.Select(ctx, selectOp)
@@ -420,7 +417,7 @@ func testSavepointRollbackReverts(t *testing.T, ctx context.Context, backend dri
 	}
 }
 
-func testSavepointReleaseCommits(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testSavepointReleaseCommits(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: Release savepoint commits changes
 	if err := backend.Begin(ctx); err != nil {
 		t.Fatalf("Begin failed: %v", err)
@@ -433,7 +430,7 @@ func testSavepointReleaseCommits(t *testing.T, ctx context.Context, backend driv
 	}
 
 	// Insert
-	insertOp := driver.InsertOp{
+	insertOp := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -463,12 +460,12 @@ func testSavepointReleaseCommits(t *testing.T, ctx context.Context, backend driv
 	}
 
 	// Verify data is visible
-	selectOp := driver.SelectOp{
+	selectOp := SelectOp{
 		Select:     []string{"name"},
 		FromSchema: schema,
 		FromTable:  table,
 		KeyColumns: []string{"id"},
-		Keys:       []key.Key{key.New1(insertedID)},
+		Keys:       []Key{New1(insertedID)},
 	}
 
 	rows, err = backend.Select(ctx, selectOp)
@@ -487,7 +484,7 @@ func testSavepointReleaseCommits(t *testing.T, ctx context.Context, backend driv
 	}
 }
 
-func testReleaseSavepointNoTransaction(t *testing.T, ctx context.Context, backend driver.Backend) {
+func testReleaseSavepointNoTransaction(t *testing.T, ctx context.Context, backend Backend) {
 	// Contract: ReleaseSavepoint without transaction returns error
 	err := backend.ReleaseSavepoint(ctx, "sp_test")
 	if err == nil {
@@ -495,7 +492,7 @@ func testReleaseSavepointNoTransaction(t *testing.T, ctx context.Context, backen
 	}
 }
 
-func testRollbackToSavepointNoTransaction(t *testing.T, ctx context.Context, backend driver.Backend) {
+func testRollbackToSavepointNoTransaction(t *testing.T, ctx context.Context, backend Backend) {
 	// Contract: RollbackToSavepoint without transaction returns error
 	err := backend.RollbackToSavepoint(ctx, "sp_test")
 	if err == nil {
@@ -503,7 +500,7 @@ func testRollbackToSavepointNoTransaction(t *testing.T, ctx context.Context, bac
 	}
 }
 
-func testTransactionCRUDOperations(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testTransactionCRUDOperations(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: CRUD operations work correctly within transactions
 	err := backend.Begin(ctx)
 	if err != nil {
@@ -511,7 +508,7 @@ func testTransactionCRUDOperations(t *testing.T, ctx context.Context, backend dr
 	}
 
 	// Test Insert within transaction
-	insertOp := driver.InsertOp{
+	insertOp := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -530,7 +527,7 @@ func testTransactionCRUDOperations(t *testing.T, ctx context.Context, backend dr
 	rows.Close()
 
 	// Test Update within transaction
-	updateOp := driver.UpdateOp{
+	updateOp := UpdateOp{
 		Schema:      schema,
 		Table:       table,
 		Sets:        []string{"value"},
@@ -545,11 +542,11 @@ func testTransactionCRUDOperations(t *testing.T, ctx context.Context, backend dr
 	}
 
 	// Test Delete within transaction
-	deleteOp := driver.DeleteOp{
+	deleteOp := DeleteOp{
 		FromSchema: schema,
 		FromTable:  table,
 		KeyColumns: []string{"id"},
-		Keys:       []key.Key{key.New1(insertedID)},
+		Keys:       []Key{New1(insertedID)},
 	}
 	err = backend.Delete(ctx, deleteOp)
 	if err != nil {

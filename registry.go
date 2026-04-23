@@ -2,8 +2,6 @@ package orm1
 
 import (
 	"reflect"
-
-	"github.com/hanpama/orm1/mapping"
 )
 
 // Registry is a storage for entity type metadata.
@@ -11,14 +9,14 @@ import (
 // this metadata to SessionFactory for building EntityMapping instances.
 type Registry struct {
 	registered map[reflect.Type]bool
-	metadata   map[reflect.Type]mapping.EntityMetadata
+	metadata   map[reflect.Type]EntityMetadata
 }
 
 // NewRegistry creates a new registry.
 func NewRegistry() *Registry {
 	return &Registry{
 		registered: make(map[reflect.Type]bool),
-		metadata:   make(map[reflect.Type]mapping.EntityMetadata),
+		metadata:   make(map[reflect.Type]EntityMetadata),
 	}
 }
 
@@ -114,11 +112,11 @@ func (r *Registry) Register(entityPtr any, opts ...MappingOption) {
 	r.registered[entityType] = true
 
 	// Analyze struct to get field metadata
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	meta := mapping.EntityMetadata{
+	meta := EntityMetadata{
 		Schema: "",
-		Table:  mapping.ToSnakeCase(entityType.Name()),
+		Table:  ToSnakeCase(entityType.Name()),
 		Fields: fields,
 	}
 
@@ -132,7 +130,7 @@ func (r *Registry) Register(entityPtr any, opts ...MappingOption) {
 
 // GetMetadata returns the collected metadata for building.
 // This is used by SessionFactory to build EntityMapping instances.
-func (r *Registry) GetMetadata() map[reflect.Type]mapping.EntityMetadata {
+func (r *Registry) GetMetadata() map[reflect.Type]EntityMetadata {
 	return r.metadata
 }
 
@@ -143,11 +141,11 @@ func (r *Registry) GetRegistered() map[reflect.Type]bool {
 }
 
 // MappingOption is a function that configures an EntityMetadata.
-type MappingOption func(*mapping.EntityMetadata)
+type MappingOption func(*EntityMetadata)
 
 // WithSchema sets the database schema for the entity's table.
 func WithSchema(schema string) MappingOption {
-	return func(m *mapping.EntityMetadata) {
+	return func(m *EntityMetadata) {
 		m.Schema = schema
 	}
 }
@@ -155,8 +153,7 @@ func WithSchema(schema string) MappingOption {
 // WithTable sets the table name for the entity.
 // If not specified, defaults to snake_case of the struct name.
 func WithTable(table string) MappingOption {
-	return func(m *mapping.EntityMetadata) {
+	return func(m *EntityMetadata) {
 		m.Table = table
 	}
 }
-

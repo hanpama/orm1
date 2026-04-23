@@ -3,38 +3,15 @@
 // This package defines the abstraction layer between orm1's ORM logic and
 // database-specific implementations. It includes interfaces for drivers and
 // backends, as well as concrete implementations for supported databases.
-package driver
+package orm1
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
-
-	sqlast "github.com/hanpama/orm1/sql"
 )
 
-// IsolationLevel represents the isolation level for a transaction.
-// Re-exported from orm1 package to avoid circular dependencies.
-type IsolationLevel int
-
-const (
-	LevelDefault IsolationLevel = iota
-	LevelReadUncommitted
-	LevelReadCommitted
-	LevelWriteCommitted
-	LevelRepeatableRead
-	LevelSnapshot
-	LevelSerializable
-	LevelLinearizable
-)
-
-// TxOptions holds transaction options for BeginTx.
-type TxOptions struct {
-	Isolation IsolationLevel
-	ReadOnly  bool
-}
-
-// convertToSQLIsolationLevel converts driver.IsolationLevel to sql.IsolationLevel
+// convertToSQLIsolationLevel converts orm1 isolation levels to database/sql isolation levels.
 func convertToSQLIsolationLevel(level IsolationLevel) sql.IsolationLevel {
 	switch level {
 	case LevelDefault:
@@ -100,12 +77,12 @@ type Backend interface {
 	Delete(ctx context.Context, op DeleteOp) error
 
 	// Complex query operations (uses SQL AST)
-	FetchQuery(ctx context.Context, stmt sqlast.SQLQuery) (Rows, error)
-	CountQuery(ctx context.Context, stmt sqlast.SQLQuery) (int64, error)
+	FetchQuery(ctx context.Context, stmt SQLQuery) (Rows, error)
+	CountQuery(ctx context.Context, stmt SQLQuery) (int64, error)
 
 	// Raw SQL operations (uses SQL AST)
-	FetchRaw(ctx context.Context, fragment sqlast.SQL) (Rows, error)
-	ExecRaw(ctx context.Context, fragment sqlast.SQL) (int64, error)
+	FetchRaw(ctx context.Context, fragment SQL) (Rows, error)
+	ExecRaw(ctx context.Context, fragment SQL) (int64, error)
 
 	// Transaction control
 	Begin(ctx context.Context) error

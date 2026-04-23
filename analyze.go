@@ -1,4 +1,4 @@
-package mapping
+package orm1
 
 import (
 	"reflect"

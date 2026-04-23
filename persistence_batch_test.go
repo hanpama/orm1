@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
@@ -5,13 +8,12 @@ import (
 	"testing"
 
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 )
 
 func TestBatchSimple(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -194,7 +196,7 @@ func TestBatchSimple(t *testing.T) {
 func TestBatchAggregate(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},

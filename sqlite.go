@@ -1,11 +1,9 @@
-package driver
+package orm1
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
-
-	sqlast "github.com/hanpama/orm1/sql"
 )
 
 // sqliteBackend implements Backend for SQLite databases.
@@ -116,11 +114,11 @@ func (d *sqliteDriver) CreateBackend() Backend {
 }
 
 // renderSQL renders a SQL AST node to the SQL buffer and appends parameters to args
-func (b *sqliteBackend) renderSQL(sql sqlast.SQL, args *[]any) {
+func (b *sqliteBackend) renderSQL(sql SQL, args *[]any) {
 	switch v := sql.(type) {
-	case sqlast.SQLN:
+	case SQLN:
 		b.quoteIdentifier(v.Part)
-	case sqlast.SQLQN:
+	case SQLQN:
 		if v.Part1 == "" {
 			b.quoteIdentifier(v.Part2)
 		} else {
@@ -128,13 +126,13 @@ func (b *sqliteBackend) renderSQL(sql sqlast.SQL, args *[]any) {
 			b.writeByte('.')
 			b.quoteIdentifier(v.Part2)
 		}
-	case sqlast.SQLText:
+	case SQLText:
 		b.writeString(v.Text)
-	case sqlast.SQLParam:
+	case SQLParam:
 		b.paramIndex++
 		*args = append(*args, v.Value)
 		b.writeByte('?')
-	case sqlast.SQLAll:
+	case SQLAll:
 		b.writeByte('(')
 		for i, el := range v.Els {
 			if i > 0 {
@@ -143,7 +141,7 @@ func (b *sqliteBackend) renderSQL(sql sqlast.SQL, args *[]any) {
 			b.renderSQL(el, args)
 		}
 		b.writeByte(')')
-	case sqlast.SQLAny:
+	case SQLAny:
 		b.writeByte('(')
 		for i, el := range v.Els {
 			if i > 0 {
@@ -152,25 +150,25 @@ func (b *sqliteBackend) renderSQL(sql sqlast.SQL, args *[]any) {
 			b.renderSQL(el, args)
 		}
 		b.writeByte(')')
-	case sqlast.SQLEq:
+	case SQLEq:
 		b.renderSQL(v.Left, args)
 		b.writeString(" = ")
 		b.renderSQL(v.Right, args)
-	case sqlast.SQLLt:
+	case SQLLt:
 		b.renderSQL(v.Left, args)
 		b.writeString(" < ")
 		b.renderSQL(v.Right, args)
-	case sqlast.SQLGt:
+	case SQLGt:
 		b.renderSQL(v.Left, args)
 		b.writeString(" > ")
 		b.renderSQL(v.Right, args)
-	case sqlast.SQLIsNull:
+	case SQLIsNull:
 		b.renderSQL(v.Operand, args)
 		b.writeString(" IS NULL")
-	case sqlast.SQLIsNotNull:
+	case SQLIsNotNull:
 		b.renderSQL(v.Operand, args)
 		b.writeString(" IS NOT NULL")
-	case sqlast.SQLFragment:
+	case SQLFragment:
 		for _, el := range v.Els {
 			b.renderSQL(el, args)
 		}
@@ -178,7 +176,7 @@ func (b *sqliteBackend) renderSQL(sql sqlast.SQL, args *[]any) {
 }
 
 // renderSQLQuery renders a SQLQuery to a SQL string with parameter values
-func (b *sqliteBackend) renderSQLQuery(stmt sqlast.SQLQuery) (string, []any) {
+func (b *sqliteBackend) renderSQLQuery(stmt SQLQuery) (string, []any) {
 	b.paramIndex = 0
 	b.resetArgsBuffer(32)
 	b.resetSQLBuffer(512)
@@ -538,7 +536,7 @@ func (b *sqliteBackend) renderDelete(stmt DeleteOp, chunk [][]any) (string, []an
 }
 
 // renderRawSQL renders a raw SQL fragment (for FetchRaw)
-func (b *sqliteBackend) renderRawSQL(fragment sqlast.SQL) (string, []any) {
+func (b *sqliteBackend) renderRawSQL(fragment SQL) (string, []any) {
 	b.paramIndex = 0
 	b.resetArgsBuffer(16)
 	b.resetSQLBuffer(512)
@@ -603,12 +601,12 @@ func (b *sqliteBackend) Delete(ctx context.Context, stmt DeleteOp) error {
 	return err
 }
 
-func (b *sqliteBackend) FetchQuery(ctx context.Context, stmt sqlast.SQLQuery) (Rows, error) {
+func (b *sqliteBackend) FetchQuery(ctx context.Context, stmt SQLQuery) (Rows, error) {
 	query, args := b.renderSQLQuery(stmt)
 	return b.queryContext(ctx, query, args...)
 }
 
-func (b *sqliteBackend) CountQuery(ctx context.Context, stmt sqlast.SQLQuery) (int64, error) {
+func (b *sqliteBackend) CountQuery(ctx context.Context, stmt SQLQuery) (int64, error) {
 	innerStmt := stmt
 	innerStmt.Limit = nil
 	innerStmt.Offset = nil
@@ -621,12 +619,12 @@ func (b *sqliteBackend) CountQuery(ctx context.Context, stmt sqlast.SQLQuery) (i
 	return count, err
 }
 
-func (b *sqliteBackend) FetchRaw(ctx context.Context, fragment sqlast.SQL) (Rows, error) {
+func (b *sqliteBackend) FetchRaw(ctx context.Context, fragment SQL) (Rows, error) {
 	query, args := b.renderRawSQL(fragment)
 	return b.queryContext(ctx, query, args...)
 }
 
-func (b *sqliteBackend) ExecRaw(ctx context.Context, fragment sqlast.SQL) (int64, error) {
+func (b *sqliteBackend) ExecRaw(ctx context.Context, fragment SQL) (int64, error) {
 	query, args := b.renderRawSQL(fragment)
 
 	result, err := b.execContext(ctx, query, args...)

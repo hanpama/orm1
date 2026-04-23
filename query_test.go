@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
@@ -5,13 +8,12 @@ import (
 	"testing"
 
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 )
 
 func TestQueryFetchAll(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -60,7 +62,7 @@ func TestQueryFetchAll(t *testing.T) {
 func TestQueryFetchOne(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -111,7 +113,7 @@ func TestQueryFetchOne(t *testing.T) {
 func TestQueryFetchOneEmpty(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -141,7 +143,7 @@ func TestQueryFetchOneEmpty(t *testing.T) {
 func TestQueryFetchMany(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -197,7 +199,7 @@ func TestQueryFetchMany(t *testing.T) {
 func TestQueryWhere(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -251,7 +253,7 @@ func TestQueryWhere(t *testing.T) {
 func TestQueryOrderBy(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -322,7 +324,7 @@ func TestQueryOrderBy(t *testing.T) {
 func TestQueryLimitOffset(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -418,7 +420,7 @@ func TestQueryLimitOffset(t *testing.T) {
 func TestQueryJoin(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -500,7 +502,7 @@ func TestQueryJoin(t *testing.T) {
 func TestQueryLeftJoin(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -569,7 +571,7 @@ func TestQueryLeftJoin(t *testing.T) {
 func TestQueryCount(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -630,7 +632,7 @@ func TestQueryCount(t *testing.T) {
 func TestQueryHaving(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},

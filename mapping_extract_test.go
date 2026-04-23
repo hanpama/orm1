@@ -1,11 +1,8 @@
-package mapping_test
+package orm1
 
 import (
 	"reflect"
 	"testing"
-
-	"github.com/hanpama/orm1/key"
-	"github.com/hanpama/orm1/mapping"
 )
 
 // Entity is a generic test entity with flexible fields
@@ -28,13 +25,13 @@ func TestExtractKey_AllArities(t *testing.T) {
 		name       string
 		fieldNames []string
 		entity     *Entity
-		verify     func(t *testing.T, result key.Key)
+		verify     func(t *testing.T, result Key)
 	}{
 		{
 			name:       "0 fields",
 			fieldNames: []string{},
 			entity:     &Entity{Name: "test"},
-			verify: func(t *testing.T, result key.Key) {
+			verify: func(t *testing.T, result Key) {
 				if result.Length() != 0 {
 					t.Errorf("Key length = %d, want 0", result.Length())
 				}
@@ -44,7 +41,7 @@ func TestExtractKey_AllArities(t *testing.T) {
 			name:       "1 field",
 			fieldNames: []string{"F1"},
 			entity:     &Entity{F1: 123, Name: "test"},
-			verify: func(t *testing.T, result key.Key) {
+			verify: func(t *testing.T, result Key) {
 				if result.Length() != 1 {
 					t.Errorf("Key length = %d, want 1", result.Length())
 				}
@@ -57,7 +54,7 @@ func TestExtractKey_AllArities(t *testing.T) {
 			name:       "2 fields",
 			fieldNames: []string{"F1", "F2"},
 			entity:     &Entity{F1: 100, F2: 200, Name: "test"},
-			verify: func(t *testing.T, result key.Key) {
+			verify: func(t *testing.T, result Key) {
 				if result.Length() != 2 {
 					t.Errorf("Key length = %d, want 2", result.Length())
 				}
@@ -73,7 +70,7 @@ func TestExtractKey_AllArities(t *testing.T) {
 			name:       "3 fields",
 			fieldNames: []string{"F1", "F2", "F3"},
 			entity:     &Entity{F1: 1, F2: 2, F3: 3},
-			verify: func(t *testing.T, result key.Key) {
+			verify: func(t *testing.T, result Key) {
 				if result.Length() != 3 {
 					t.Errorf("Key length = %d, want 3", result.Length())
 				}
@@ -83,7 +80,7 @@ func TestExtractKey_AllArities(t *testing.T) {
 			name:       "4 fields",
 			fieldNames: []string{"F1", "F2", "F3", "F4"},
 			entity:     &Entity{F1: 1, F2: 2, F3: 3, F4: 4},
-			verify: func(t *testing.T, result key.Key) {
+			verify: func(t *testing.T, result Key) {
 				if result.Length() != 4 {
 					t.Errorf("Key length = %d, want 4", result.Length())
 				}
@@ -93,7 +90,7 @@ func TestExtractKey_AllArities(t *testing.T) {
 			name:       "5 fields",
 			fieldNames: []string{"F1", "F2", "F3", "F4", "F5"},
 			entity:     &Entity{F1: 1, F2: 2, F3: 3, F4: 4, F5: 5},
-			verify: func(t *testing.T, result key.Key) {
+			verify: func(t *testing.T, result Key) {
 				if result.Length() != 5 {
 					t.Errorf("Key length = %d, want 5", result.Length())
 				}
@@ -103,7 +100,7 @@ func TestExtractKey_AllArities(t *testing.T) {
 			name:       "6 fields",
 			fieldNames: []string{"F1", "F2", "F3", "F4", "F5", "F6"},
 			entity:     &Entity{F1: 1, F2: 2, F3: 3, F4: 4, F5: 5, F6: 6},
-			verify: func(t *testing.T, result key.Key) {
+			verify: func(t *testing.T, result Key) {
 				if result.Length() != 6 {
 					t.Errorf("Key length = %d, want 6", result.Length())
 				}
@@ -113,7 +110,7 @@ func TestExtractKey_AllArities(t *testing.T) {
 			name:       "7 fields",
 			fieldNames: []string{"F1", "F2", "F3", "F4", "F5", "F6", "F7"},
 			entity:     &Entity{F1: 1, F2: 2, F3: 3, F4: 4, F5: 5, F6: 6, F7: 7},
-			verify: func(t *testing.T, result key.Key) {
+			verify: func(t *testing.T, result Key) {
 				if result.Length() != 7 {
 					t.Errorf("Key length = %d, want 7", result.Length())
 				}
@@ -123,7 +120,7 @@ func TestExtractKey_AllArities(t *testing.T) {
 			name:       "8 fields",
 			fieldNames: []string{"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8"},
 			entity:     &Entity{F1: 1, F2: 2, F3: 3, F4: 4, F5: 5, F6: 6, F7: 7, F8: 8},
-			verify: func(t *testing.T, result key.Key) {
+			verify: func(t *testing.T, result Key) {
 				if result.Length() != 8 {
 					t.Errorf("Key length = %d, want 8", result.Length())
 				}
@@ -133,7 +130,7 @@ func TestExtractKey_AllArities(t *testing.T) {
 			name:       "9 fields",
 			fieldNames: []string{"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9"},
 			entity:     &Entity{F1: 1, F2: 2, F3: 3, F4: 4, F5: 5, F6: 6, F7: 7, F8: 8, F9: 9},
-			verify: func(t *testing.T, result key.Key) {
+			verify: func(t *testing.T, result Key) {
 				if result.Length() != 9 {
 					t.Errorf("Key length = %d, want 9", result.Length())
 				}
@@ -198,16 +195,16 @@ func TestExtractKey_MixedTypes(t *testing.T) {
 		BoolField:   true,
 	}
 
-	fieldMap := map[string]*mapping.Field{
+	fieldMap := map[string]*Field{
 		"IntField":    {Name: "IntField", Column: "int_field", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
 		"StringField": {Name: "StringField", Column: "string_field", Type: reflect.TypeOf(""), FieldIndex: 1},
 	}
 
-	em := mapping.NewEntityMapping(
+	em := NewEntityMapping(
 		reflect.TypeOf(MixedEntity{}),
 		"", "mixed_entity",
 		fieldMap,
-		map[string]*mapping.Child{},
+		map[string]*Child{},
 		[]string{"IntField", "StringField"},
 		[]string{"IntField", "StringField"},
 		[]string{},
@@ -243,10 +240,10 @@ func TestExtractKey_PanicOnTooManyFields(t *testing.T) {
 	entity := &Entity10{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 
 	// Create mapping with 10 fields
-	fieldMap := make(map[string]*mapping.Field)
+	fieldMap := make(map[string]*Field)
 	fieldNames := []string{"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10"}
 	for i, name := range fieldNames {
-		fieldMap[name] = &mapping.Field{
+		fieldMap[name] = &Field{
 			Name:       name,
 			Column:     name,
 			Type:       reflect.TypeOf(int64(0)),
@@ -254,11 +251,11 @@ func TestExtractKey_PanicOnTooManyFields(t *testing.T) {
 		}
 	}
 
-	em := mapping.NewEntityMapping(
+	em := NewEntityMapping(
 		reflect.TypeOf(Entity10{}),
 		"", "entity10",
 		fieldMap,
-		map[string]*mapping.Child{},
+		map[string]*Child{},
 		fieldNames,
 		fieldNames,
 		[]string{},
@@ -294,11 +291,11 @@ func TestExtractKey_KeyEquality(t *testing.T) {
 }
 
 // Helper function to create EntityMapping for test
-func createEntityMapping(fieldNames []string) *mapping.EntityMapping {
+func createEntityMapping(fieldNames []string) *EntityMapping {
 	entityType := reflect.TypeOf(Entity{})
 
 	// Analyze struct and mark specified fields as primary
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
 	// Override PrimaryTag for specified fields
 	isPrimaryField := make(map[string]bool)
@@ -313,7 +310,7 @@ func createEntityMapping(fieldNames []string) *mapping.EntityMapping {
 	}
 
 	// Use BuildEntityMappings to create the mapping
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -324,6 +321,6 @@ func createEntityMapping(fieldNames []string) *mapping.EntityMapping {
 		entityType: true,
 	}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	return mappings[entityType]
 }

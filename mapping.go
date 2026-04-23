@@ -6,7 +6,7 @@
 //
 // Most users will not need to use this package directly, as the orm1
 // package provides higher-level APIs through SessionFactory and Session.
-package mapping
+package orm1
 
 import (
 	"reflect"

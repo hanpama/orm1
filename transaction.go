@@ -3,8 +3,6 @@ package orm1
 import (
 	"context"
 	"fmt"
-
-	"github.com/hanpama/orm1/driver"
 )
 
 // IsolationLevel represents the isolation level for a transaction.
@@ -99,14 +97,7 @@ func (s *Session) Begin(ctx context.Context, opts *TxOptions) (*Transaction, err
 
 	// First transaction: BEGIN
 	if depth == 1 {
-		var driverOpts *driver.TxOptions
-		if opts != nil {
-			driverOpts = &driver.TxOptions{
-				Isolation: driver.IsolationLevel(opts.Isolation),
-				ReadOnly:  opts.ReadOnly,
-			}
-		}
-		if err := s.backend.BeginTx(ctx, driverOpts); err != nil {
+		if err := s.backend.BeginTx(ctx, opts); err != nil {
 			s.txStack = s.txStack[:depth-1]
 			return nil, err
 		}

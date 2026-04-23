@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
@@ -6,7 +9,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 )
 
 // Helper function to insert purchase with line items test data
@@ -64,7 +66,7 @@ func cleanupPurchaseGroupByTestData(ctx context.Context, session *orm1.Session) 
 func TestPaginationGroupByForward(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -131,7 +133,7 @@ func TestPaginationGroupByForward(t *testing.T) {
 func TestPaginationGroupByBackward(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -196,7 +198,7 @@ func TestPaginationGroupByBackward(t *testing.T) {
 func TestPaginationGroupByMultiplePages(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -308,7 +310,7 @@ func TestPaginationGroupByMultiplePages(t *testing.T) {
 func TestPaginationGroupByDescOrder(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},

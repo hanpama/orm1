@@ -2,8 +2,6 @@ package orm1
 
 import (
 	"context"
-
-	"github.com/hanpama/orm1/sql"
 )
 
 // Page represents pagination metadata
@@ -20,12 +18,12 @@ type Page struct {
 func (q *EntityQuery[T]) Paginate(ctx context.Context, after Key, first *int, before Key, last *int) (*Page, error) {
 	// Optimization #1: pre-allocate capacity for PK fields
 	pkCount := len(q.mapping.PrimaryKey)
-	orderBy := make([]sql.OrderBy, len(q.orderByOpts), len(q.orderByOpts)+pkCount)
+	orderBy := make([]OrderBy, len(q.orderByOpts), len(q.orderByOpts)+pkCount)
 	copy(orderBy, q.orderByOpts)
 	for _, fieldName := range q.mapping.PrimaryKey {
 		field := q.mapping.FieldMap[fieldName]
-		orderBy = append(orderBy, sql.OrderBy{
-			Expr:      sql.SQLQN{Part1: q.alias, Part2: field.Column},
+		orderBy = append(orderBy, OrderBy{
+			Expr:      SQLQN{Part1: q.alias, Part2: field.Column},
 			Ascending: true,
 			NullsLast: true,
 		})
@@ -34,7 +32,7 @@ func (q *EntityQuery[T]) Paginate(ctx context.Context, after Key, first *int, be
 	if last != nil {
 		// Reverse all ordering for backward pagination
 		for i := range orderBy {
-			orderBy[i] = sql.OrderBy{
+			orderBy[i] = OrderBy{
 				Expr:      orderBy[i].Expr,
 				Ascending: !orderBy[i].Ascending,
 				NullsLast: !orderBy[i].NullsLast,
@@ -43,7 +41,7 @@ func (q *EntityQuery[T]) Paginate(ctx context.Context, after Key, first *int, be
 	}
 
 	// Optimization #3: pre-allocate capacity for cursor filters (max 2)
-	cursorFilters := make([]sql.SQL, 0, 2)
+	cursorFilters := make([]SQL, 0, 2)
 	var afterRow []any
 	var beforeRow []any
 	var err error
@@ -71,16 +69,16 @@ func (q *EntityQuery[T]) Paginate(ctx context.Context, after Key, first *int, be
 	}
 
 	// Optimization #4: pre-allocate capacity for filter slices
-	var whereFilters []sql.SQL
-	var havingFilters []sql.SQL
+	var whereFilters []SQL
+	var havingFilters []SQL
 
 	if len(q.groupByExprs) > 0 {
-		havingFilters = make([]sql.SQL, 0, len(q.havingConds)+len(cursorFilters))
+		havingFilters = make([]SQL, 0, len(q.havingConds)+len(cursorFilters))
 		havingFilters = append(havingFilters, q.havingConds...)
 		havingFilters = append(havingFilters, cursorFilters...)
 		whereFilters = q.whereConds
 	} else {
-		whereFilters = make([]sql.SQL, 0, len(q.whereConds)+len(cursorFilters))
+		whereFilters = make([]SQL, 0, len(q.whereConds)+len(cursorFilters))
 		whereFilters = append(whereFilters, q.whereConds...)
 		whereFilters = append(whereFilters, cursorFilters...)
 		havingFilters = q.havingConds
@@ -94,35 +92,35 @@ func (q *EntityQuery[T]) Paginate(ctx context.Context, after Key, first *int, be
 	}
 
 	// +1 to limit to check if there are more pages
-	var limitSQL, offsetSQL *sql.SQL
+	var limitSQL, offsetSQL *SQL
 
 	if limit != nil {
 		limitPlusOne := *limit + 1
-		var l sql.SQL = sql.SQLParam{Value: limitPlusOne}
+		var l SQL = SQLParam{Value: limitPlusOne}
 		limitSQL = &l
 	}
 
 	if q.offset != nil {
-		var o sql.SQL = sql.SQLParam{Value: *q.offset}
+		var o SQL = SQLParam{Value: *q.offset}
 		offsetSQL = &o
 	}
 
-	var whereClause *sql.SQL
+	var whereClause *SQL
 	if len(whereFilters) > 0 {
-		var w sql.SQL = sql.SQLAll{Els: whereFilters}
+		var w SQL = SQLAll{Els: whereFilters}
 		whereClause = &w
 	}
 
-	var havingClause *sql.SQL
+	var havingClause *SQL
 	if len(havingFilters) > 0 {
-		var h sql.SQL = sql.SQLAll{Els: havingFilters}
+		var h SQL = SQLAll{Els: havingFilters}
 		havingClause = &h
 	}
 
-	selectStmt := &sql.SQLQuery{
+	selectStmt := &SQLQuery{
 		Select:    q.buildPrimaryKeyColumns(),
-		FromTable: sql.SQLQN{Part1: q.mapping.Schema, Part2: q.mapping.Table},
-		FromAlias: sql.SQLText{Text: q.alias},
+		FromTable: SQLQN{Part1: q.mapping.Schema, Part2: q.mapping.Table},
+		FromAlias: SQLText{Text: q.alias},
 		Joins:     q.buildJoins(),
 		Where:     whereClause,
 		GroupBy:   q.buildGroupBy(),
@@ -201,56 +199,56 @@ func (q *EntityQuery[T]) Paginate(ctx context.Context, after Key, first *int, be
 }
 
 // fetchCursorRow fetches the order by column values for a given cursor (primary key)
-func (q *EntityQuery[T]) fetchCursorRow(ctx context.Context, orderBys []sql.OrderBy, cursor Key) ([]any, error) {
+func (q *EntityQuery[T]) fetchCursorRow(ctx context.Context, orderBys []OrderBy, cursor Key) ([]any, error) {
 	// Optimization #6: pre-allocate pkFilters capacity
-	pkFilters := make([]sql.SQL, 0, len(q.mapping.PrimaryKey))
+	pkFilters := make([]SQL, 0, len(q.mapping.PrimaryKey))
 	for i, fieldName := range q.mapping.PrimaryKey {
 		if i >= cursor.Length() {
 			break
 		}
 		field := q.mapping.FieldMap[fieldName]
-		pkFilters = append(pkFilters, sql.SQLEq{
-			Left:  sql.SQLQN{Part1: q.alias, Part2: field.Column},
-			Right: sql.SQLParam{Value: cursor.At(i)},
+		pkFilters = append(pkFilters, SQLEq{
+			Left:  SQLQN{Part1: q.alias, Part2: field.Column},
+			Right: SQLParam{Value: cursor.At(i)},
 		})
 	}
 
-	var whereFilters []sql.SQL
-	var havingFilters []sql.SQL
+	var whereFilters []SQL
+	var havingFilters []SQL
 
 	if len(q.groupByExprs) > 0 {
 		whereFilters = q.whereConds
-		havingFilters = make([]sql.SQL, 0, len(q.havingConds)+len(pkFilters))
+		havingFilters = make([]SQL, 0, len(q.havingConds)+len(pkFilters))
 		havingFilters = append(havingFilters, q.havingConds...)
 		havingFilters = append(havingFilters, pkFilters...)
 	} else {
-		whereFilters = make([]sql.SQL, 0, len(q.whereConds)+len(pkFilters))
+		whereFilters = make([]SQL, 0, len(q.whereConds)+len(pkFilters))
 		whereFilters = append(whereFilters, q.whereConds...)
 		whereFilters = append(whereFilters, pkFilters...)
 		havingFilters = q.havingConds
 	}
 
-	selectCols := make([]sql.SQL, 0, len(orderBys))
+	selectCols := make([]SQL, 0, len(orderBys))
 	for _, ob := range orderBys {
 		selectCols = append(selectCols, ob.Expr)
 	}
 
-	var whereClause *sql.SQL
+	var whereClause *SQL
 	if len(whereFilters) > 0 {
-		var w sql.SQL = sql.SQLAll{Els: whereFilters}
+		var w SQL = SQLAll{Els: whereFilters}
 		whereClause = &w
 	}
 
-	var havingClause *sql.SQL
+	var havingClause *SQL
 	if len(havingFilters) > 0 {
-		var h sql.SQL = sql.SQLAll{Els: havingFilters}
+		var h SQL = SQLAll{Els: havingFilters}
 		havingClause = &h
 	}
 
-	selectStmt := &sql.SQLQuery{
+	selectStmt := &SQLQuery{
 		Select:    selectCols,
-		FromTable: sql.SQLQN{Part1: q.mapping.Schema, Part2: q.mapping.Table},
-		FromAlias: sql.SQLText{Text: q.alias},
+		FromTable: SQLQN{Part1: q.mapping.Schema, Part2: q.mapping.Table},
+		FromAlias: SQLText{Text: q.alias},
 		Joins:     q.buildJoins(),
 		Where:     whereClause,
 		GroupBy:   q.buildGroupBy(),
@@ -280,12 +278,12 @@ func (q *EntityQuery[T]) fetchCursorRow(ctx context.Context, orderBys []sql.Orde
 
 // formatCursorPredicate generates complex cursor comparison predicates
 // This handles multi-column ordering with NULL handling
-func formatCursorPredicate(orderBys []sql.OrderBy, values []any, isForward bool) sql.SQL {
+func formatCursorPredicate(orderBys []OrderBy, values []any, isForward bool) SQL {
 	// Optimization #8: pre-allocate orPredicates capacity
-	orPredicates := make([]sql.SQL, 0, len(orderBys))
+	orPredicates := make([]SQL, 0, len(orderBys))
 
 	for i := range orderBys {
-		andPredicates := make([]sql.SQL, 0, i+1)
+		andPredicates := make([]SQL, 0, i+1)
 
 		for j := 0; j <= i; j++ {
 			sort := orderBys[j]
@@ -295,13 +293,13 @@ func formatCursorPredicate(orderBys []sql.OrderBy, values []any, isForward bool)
 				// For earlier columns: must be equal
 				if cursorValue == nil {
 					// Cursor value is NULL: column must be NULL
-					andPredicates = append(andPredicates, sql.SQLIsNull{Operand: sort.Expr})
+					andPredicates = append(andPredicates, SQLIsNull{Operand: sort.Expr})
 				} else {
 					// Cursor value is not NULL: (col = $N OR (col IS NULL AND $N IS NULL))
 					// But we know $N is not NULL, so: (col = $N OR FALSE) = (col = $N)
-					andPredicates = append(andPredicates, sql.SQLEq{
+					andPredicates = append(andPredicates, SQLEq{
 						Left:  sort.Expr,
-						Right: sql.SQLParam{Value: cursorValue},
+						Right: SQLParam{Value: cursorValue},
 					})
 				}
 			} else {
@@ -312,34 +310,34 @@ func formatCursorPredicate(orderBys []sql.OrderBy, values []any, isForward bool)
 						// NULL is sorted last
 						if isForward {
 							// Forward from NULL (last): no more rows
-							andPredicates = append(andPredicates, sql.SQLText{Text: "FALSE"})
+							andPredicates = append(andPredicates, SQLText{Text: "FALSE"})
 						} else {
 							// Backward from NULL (last): get all non-NULL rows
-							andPredicates = append(andPredicates, sql.SQLIsNotNull{Operand: sort.Expr})
+							andPredicates = append(andPredicates, SQLIsNotNull{Operand: sort.Expr})
 						}
 					} else {
 						// NULL is sorted first
 						if isForward {
 							// Forward from NULL (first): get all non-NULL rows
-							andPredicates = append(andPredicates, sql.SQLIsNotNull{Operand: sort.Expr})
+							andPredicates = append(andPredicates, SQLIsNotNull{Operand: sort.Expr})
 						} else {
 							// Backward from NULL (first): no more rows
-							andPredicates = append(andPredicates, sql.SQLText{Text: "FALSE"})
+							andPredicates = append(andPredicates, SQLText{Text: "FALSE"})
 						}
 					}
 				} else {
 					// Cursor value is not NULL: (col > $N OR col IS NULL)
-					var comp sql.SQL
+					var comp SQL
 					if sort.Ascending == isForward {
-						comp = sql.SQLGt{Left: sort.Expr, Right: sql.SQLParam{Value: cursorValue}}
+						comp = SQLGt{Left: sort.Expr, Right: SQLParam{Value: cursorValue}}
 					} else {
-						comp = sql.SQLLt{Left: sort.Expr, Right: sql.SQLParam{Value: cursorValue}}
+						comp = SQLLt{Left: sort.Expr, Right: SQLParam{Value: cursorValue}}
 					}
 
 					// NULL handling: should col IS NULL be included?
 					if sort.NullsLast == isForward {
 						// NULLs come after cursor, include them
-						andPredicates = append(andPredicates, sql.SQLAny{Els: []sql.SQL{comp, sql.SQLIsNull{Operand: sort.Expr}}})
+						andPredicates = append(andPredicates, SQLAny{Els: []SQL{comp, SQLIsNull{Operand: sort.Expr}}})
 					} else {
 						// NULLs come before cursor, exclude them
 						andPredicates = append(andPredicates, comp)
@@ -348,8 +346,8 @@ func formatCursorPredicate(orderBys []sql.OrderBy, values []any, isForward bool)
 			}
 		}
 
-		orPredicates = append(orPredicates, sql.SQLAll{Els: andPredicates})
+		orPredicates = append(orPredicates, SQLAll{Els: andPredicates})
 	}
 
-	return sql.SQLAny{Els: orPredicates}
+	return SQLAny{Els: orPredicates}
 }

@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-
-	"github.com/hanpama/orm1/driver"
-	"github.com/hanpama/orm1/mapping"
 )
 
 // Get loads a single entity by primary key.
@@ -203,7 +200,7 @@ func (s *Session) BatchDelete(ctx context.Context, entities ...any) error {
 	return s.delete(ctx, mapping, toDeleteEntities)
 }
 
-func (s *Session) get(ctx context.Context, em *mapping.EntityMapping, keyColumns []string, ids []Key) ([]any, error) {
+func (s *Session) get(ctx context.Context, em *EntityMapping, keyColumns []string, ids []Key) ([]any, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -215,7 +212,7 @@ func (s *Session) get(ctx context.Context, em *mapping.EntityMapping, keyColumns
 		}
 	}
 
-	selectStmt := driver.SelectOp{
+	selectStmt := SelectOp{
 		Select:     em.Columns(),
 		FromSchema: em.Schema,
 		FromTable:  em.Table,
@@ -250,7 +247,7 @@ func (s *Session) get(ctx context.Context, em *mapping.EntityMapping, keyColumns
 }
 
 // loadChildren loads child entities for parent entities (cascade loading).
-func (s *Session) loadChildren(ctx context.Context, em *mapping.EntityMapping, parents []any) error {
+func (s *Session) loadChildren(ctx context.Context, em *EntityMapping, parents []any) error {
 	parentKeys := make([]Key, len(parents))
 	for i, parent := range parents {
 		parentKeys[i] = em.ExtractKey(parent, em.PrimaryKey)
@@ -311,7 +308,7 @@ func (s *Session) loadChildren(ctx context.Context, em *mapping.EntityMapping, p
 	return nil
 }
 
-func (s *Session) save(ctx context.Context, em *mapping.EntityMapping, entities []any) error {
+func (s *Session) save(ctx context.Context, em *EntityMapping, entities []any) error {
 	toInsert := make([]any, 0, len(entities))
 	toUpdate := make([]any, 0, len(entities))
 
@@ -393,7 +390,7 @@ func (s *Session) save(ctx context.Context, em *mapping.EntityMapping, entities 
 	return nil
 }
 
-func (s *Session) insert(ctx context.Context, em *mapping.EntityMapping, entities []any) ([]any, error) {
+func (s *Session) insert(ctx context.Context, em *EntityMapping, entities []any) ([]any, error) {
 	insertCols := em.InsertableColumns()
 	values := make([][]any, len(entities))
 	for i, entity := range entities {
@@ -405,7 +402,7 @@ func (s *Session) insert(ctx context.Context, em *mapping.EntityMapping, entitie
 		values[i] = row
 	}
 
-	insertStmt := driver.InsertOp{
+	insertStmt := InsertOp{
 		IntoSchema: em.Schema,
 		IntoTable:  em.Table,
 		Insert:     em.InsertableColumns(),
@@ -438,7 +435,7 @@ func (s *Session) insert(ctx context.Context, em *mapping.EntityMapping, entitie
 	return result, nil
 }
 
-func (s *Session) update(ctx context.Context, em *mapping.EntityMapping, entities []any) error {
+func (s *Session) update(ctx context.Context, em *EntityMapping, entities []any) error {
 	// Build separate SetValues and WhereValues for batch update
 	setValues := make([][]any, len(entities))
 	whereValues := make([][]any, len(entities))
@@ -459,7 +456,7 @@ func (s *Session) update(ctx context.Context, em *mapping.EntityMapping, entitie
 		whereValues[i] = whereRow
 	}
 
-	updateStmt := driver.UpdateOp{
+	updateStmt := UpdateOp{
 		Schema:      em.Schema,
 		Table:       em.Table,
 		Sets:        em.UpdatableColumns(),
@@ -471,7 +468,7 @@ func (s *Session) update(ctx context.Context, em *mapping.EntityMapping, entitie
 	return s.backend.Update(ctx, updateStmt)
 }
 
-func (s *Session) delete(ctx context.Context, em *mapping.EntityMapping, entities []any) error {
+func (s *Session) delete(ctx context.Context, em *EntityMapping, entities []any) error {
 	// First, delete children recursively
 	for _, child := range em.ChildMap {
 		childMapping, err := s.getMapping(child.Target)
@@ -500,7 +497,7 @@ func (s *Session) delete(ctx context.Context, em *mapping.EntityMapping, entitie
 	}
 
 	// Then delete the entities themselves
-	deleteStmt := driver.DeleteOp{
+	deleteStmt := DeleteOp{
 		FromSchema: em.Schema,
 		FromTable:  em.Table,
 		KeyColumns: em.PrimaryColumns(),

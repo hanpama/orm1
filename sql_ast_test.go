@@ -1,4 +1,4 @@
-package sql
+package orm1
 
 import (
 	"testing"

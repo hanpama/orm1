@@ -1,11 +1,10 @@
-package mapping_test
+package orm1
 
 import (
 	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/hanpama/orm1/mapping"
 )
 
 func TestToSnakeCase(t *testing.T) {
@@ -24,7 +23,7 @@ func TestToSnakeCase(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.input, func(t *testing.T) {
-			result := mapping.ToSnakeCase(tc.input)
+			result := ToSnakeCase(tc.input)
 			if result != tc.expected {
 				t.Errorf("ToSnakeCase(%q) = %q, want %q", tc.input, result, tc.expected)
 			}
@@ -52,10 +51,10 @@ func TestAnalyzeStruct(t *testing.T) {
 	}
 
 	structType := reflect.TypeOf(TestStruct{})
-	got := mapping.AnalyzeStruct(structType)
+	got := AnalyzeStruct(structType)
 
 	// Expected result
-	want := []mapping.FieldMetadata{
+	want := []FieldMetadata{
 		{
 			Name:          "ID",
 			Typ:           reflect.TypeOf(int64(0)),
@@ -143,7 +142,7 @@ func TestAnalyzeStruct(t *testing.T) {
 
 // TestAnalyzeStruct_NonStruct tests AnalyzeStruct with non-struct type
 func TestAnalyzeStruct_NonStruct(t *testing.T) {
-	result := mapping.AnalyzeStruct(reflect.TypeOf(42))
+	result := AnalyzeStruct(reflect.TypeOf(42))
 	if result != nil {
 		t.Errorf("AnalyzeStruct(int) should return nil, got %v", result)
 	}
@@ -152,7 +151,7 @@ func TestAnalyzeStruct_NonStruct(t *testing.T) {
 // TestAnalyzeStruct_EmptyStruct tests AnalyzeStruct with empty struct
 func TestAnalyzeStruct_EmptyStruct(t *testing.T) {
 	type Empty struct{}
-	result := mapping.AnalyzeStruct(reflect.TypeOf(Empty{}))
+	result := AnalyzeStruct(reflect.TypeOf(Empty{}))
 	if len(result) != 0 {
 		t.Errorf("AnalyzeStruct(Empty{}) should return empty slice, got %d fields", len(result))
 	}
@@ -164,7 +163,7 @@ func TestAnalyzeStruct_UnexportedOnly(t *testing.T) {
 		unexported1 string
 		unexported2 int
 	}
-	result := mapping.AnalyzeStruct(reflect.TypeOf(OnlyUnexported{}))
+	result := AnalyzeStruct(reflect.TypeOf(OnlyUnexported{}))
 	if len(result) != 0 {
 		t.Errorf("AnalyzeStruct with only unexported fields should return empty slice, got %d fields", len(result))
 	}

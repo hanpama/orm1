@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
@@ -6,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -19,8 +21,8 @@ type Order struct {
 }
 
 type OrderItem struct {
-	ID       int64   `orm1:"auto"`
-	OrderID  int64   `orm1:"parental"` // Foreign key to parent
+	ID       int64 `orm1:"auto"`
+	OrderID  int64 `orm1:"parental"` // Foreign key to parent
 	Product  string
 	Quantity int
 	Price    float64
@@ -39,7 +41,7 @@ type Comment struct {
 }
 
 type User struct {
-	ID        int64  `orm1:"auto"`
+	ID        int64 `orm1:"auto"`
 	Age       int
 	CreatedAt string `orm1:"auto"`
 }
@@ -68,7 +70,7 @@ func Example_quickStart() {
 	registry := orm1.NewRegistry()
 	registry.Register(&Order{}, orm1.WithTable("orders"))
 	registry.Register(&OrderItem{}, orm1.WithTable("order_items"))
-	factory := orm1.NewSessionFactory(registry, driver.NewSQLite(db))
+	factory := orm1.NewSessionFactory(registry, orm1.NewSQLite(db))
 
 	// Setup: Create an order with items
 	setupSession := factory.CreateSession()
@@ -88,7 +90,8 @@ func Example_quickStart() {
 	ctx := context.Background()
 
 	// Start a transaction
-	tx, err := session.Begin(ctx, nil); if err != nil {
+	tx, err := session.Begin(ctx, nil)
+	if err != nil {
 		return
 	}
 	// Defer rollback in case of error or panic
@@ -102,7 +105,7 @@ func Example_quickStart() {
 	}
 
 	// Modify the aggregate
-	loadedOrder.Total = 159.99 // Update a value
+	loadedOrder.Total = 159.99                                // Update a value
 	loadedOrder.Items = append(loadedOrder.Items, &OrderItem{ // Add a new child
 		Product:  "Widget",
 		Quantity: 5,
@@ -150,7 +153,7 @@ func Example_aggregateSupport() {
 	registry := orm1.NewRegistry()
 	registry.Register(&Post{}, orm1.WithTable("posts"))
 	registry.Register(&Comment{}, orm1.WithTable("comments"))
-	factory := orm1.NewSessionFactory(registry, driver.NewSQLite(db))
+	factory := orm1.NewSessionFactory(registry, orm1.NewSQLite(db))
 
 	// Setup: Create a post
 	setupSession := factory.CreateSession()
@@ -206,7 +209,7 @@ func Example_typeSafeQueries() {
 
 	registry := orm1.NewRegistry()
 	registry.Register(&User{}, orm1.WithTable("users"))
-	factory := orm1.NewSessionFactory(registry, driver.NewSQLite(db))
+	factory := orm1.NewSessionFactory(registry, orm1.NewSQLite(db))
 
 	session := factory.CreateSession()
 	ctx := context.Background()
@@ -244,7 +247,7 @@ func Example_rawSQL() {
 		('Transport', 20.00)`)
 
 	registry := orm1.NewRegistry()
-	factory := orm1.NewSessionFactory(registry, driver.NewSQLite(db))
+	factory := orm1.NewSessionFactory(registry, orm1.NewSQLite(db))
 
 	session := factory.CreateSession()
 	ctx := context.Background()
