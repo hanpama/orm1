@@ -1,16 +1,13 @@
-package driver_test
+package orm1
 
 import (
 	"context"
 	"testing"
-
-	"github.com/hanpama/orm1/driver"
-	"github.com/hanpama/orm1/key"
 )
 
-func testRowsContracts(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testRowsContracts(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Insert test data
-	insertOp := driver.InsertOp{
+	insertOp := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -42,14 +39,14 @@ func testRowsContracts(t *testing.T, ctx context.Context, backend driver.Backend
 	})
 }
 
-func testNextAdvancement(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string, ids []int64) {
+func testNextAdvancement(t *testing.T, ctx context.Context, backend Backend, schema, table string, ids []int64) {
 	// Contract: Next advances through rows: BeforeFirst -> OnRow -> AfterLast
-	selectOp := driver.SelectOp{
+	selectOp := SelectOp{
 		Select:     []string{"id"},
 		FromSchema: schema,
 		FromTable:  table,
 		KeyColumns: []string{"id"},
-		Keys:       []key.Key{key.New1(ids[0]), key.New1(ids[1]), key.New1(ids[2])},
+		Keys:       []Key{New1(ids[0]), New1(ids[1]), New1(ids[2])},
 	}
 
 	rows, err := backend.Select(ctx, selectOp)
@@ -84,14 +81,14 @@ func testNextAdvancement(t *testing.T, ctx context.Context, backend driver.Backe
 	}
 }
 
-func testCloseIdempotent(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string, ids []int64) {
+func testCloseIdempotent(t *testing.T, ctx context.Context, backend Backend, schema, table string, ids []int64) {
 	// Contract: Close is idempotent
-	selectOp := driver.SelectOp{
+	selectOp := SelectOp{
 		Select:     []string{"id"},
 		FromSchema: schema,
 		FromTable:  table,
 		KeyColumns: []string{"id"},
-		Keys:       []key.Key{key.New1(ids[0])},
+		Keys:       []Key{New1(ids[0])},
 	}
 
 	rows, err := backend.Select(ctx, selectOp)

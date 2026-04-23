@@ -1,4 +1,4 @@
-package orm1_test
+package orm1
 
 import (
 	"reflect"
@@ -6,8 +6,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/mapping"
 )
 
 // TestMappingBuilder tests entity mapping with various struct tag configurations
@@ -15,7 +13,7 @@ func TestMappingBuilder(t *testing.T) {
 	tests := []struct {
 		name   string
 		entity any
-		want   *mapping.EntityMapping
+		want   *EntityMapping
 	}{
 		{
 			name: "primary tag",
@@ -23,12 +21,12 @@ func TestMappingBuilder(t *testing.T) {
 				ID   int64 `orm1:"primary"`
 				Name string
 			}{},
-			want: &mapping.EntityMapping{
-				FieldMap: map[string]*mapping.Field{
+			want: &EntityMapping{
+				FieldMap: map[string]*Field{
 					"ID":   {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
 					"Name": {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 1},
 				},
-				ChildMap:    map[string]*mapping.Child{},
+				ChildMap:    map[string]*Child{},
 				AllFields:   []string{"ID", "Name"},
 				PrimaryKey:  []string{"ID"},
 				ParentalKey: []string{},
@@ -43,13 +41,13 @@ func TestMappingBuilder(t *testing.T) {
 				ParentID int64 `orm1:"parental"`
 				Name     string
 			}{},
-			want: &mapping.EntityMapping{
-				FieldMap: map[string]*mapping.Field{
+			want: &EntityMapping{
+				FieldMap: map[string]*Field{
 					"ID":       {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
 					"ParentID": {Name: "ParentID", Column: "parent_id", Type: reflect.TypeOf(int64(0)), FieldIndex: 1},
 					"Name":     {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 2},
 				},
-				ChildMap:    map[string]*mapping.Child{},
+				ChildMap:    map[string]*Child{},
 				AllFields:   []string{"ID", "ParentID", "Name"},
 				PrimaryKey:  []string{"ID"},
 				ParentalKey: []string{"ParentID"},
@@ -63,12 +61,12 @@ func TestMappingBuilder(t *testing.T) {
 				ID       int64  `orm1:"primary"`
 				FullName string `orm1:"column:full_name"`
 			}{},
-			want: &mapping.EntityMapping{
-				FieldMap: map[string]*mapping.Field{
+			want: &EntityMapping{
+				FieldMap: map[string]*Field{
 					"ID":       {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
 					"FullName": {Name: "FullName", Column: "full_name", Type: reflect.TypeOf(""), FieldIndex: 1},
 				},
-				ChildMap:    map[string]*mapping.Child{},
+				ChildMap:    map[string]*Child{},
 				AllFields:   []string{"ID", "FullName"},
 				PrimaryKey:  []string{"ID"},
 				ParentalKey: []string{},
@@ -83,13 +81,13 @@ func TestMappingBuilder(t *testing.T) {
 				Name      string
 				CreatedAt string `orm1:"skip_insert"`
 			}{},
-			want: &mapping.EntityMapping{
-				FieldMap: map[string]*mapping.Field{
+			want: &EntityMapping{
+				FieldMap: map[string]*Field{
 					"ID":        {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
 					"Name":      {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 1},
 					"CreatedAt": {Name: "CreatedAt", Column: "created_at", Type: reflect.TypeOf(""), FieldIndex: 2},
 				},
-				ChildMap:    map[string]*mapping.Child{},
+				ChildMap:    map[string]*Child{},
 				AllFields:   []string{"ID", "Name", "CreatedAt"},
 				PrimaryKey:  []string{"ID"},
 				ParentalKey: []string{},
@@ -104,13 +102,13 @@ func TestMappingBuilder(t *testing.T) {
 				Name      string
 				UpdatedAt string `orm1:"skip_update"`
 			}{},
-			want: &mapping.EntityMapping{
-				FieldMap: map[string]*mapping.Field{
+			want: &EntityMapping{
+				FieldMap: map[string]*Field{
 					"ID":        {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
 					"Name":      {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 1},
 					"UpdatedAt": {Name: "UpdatedAt", Column: "updated_at", Type: reflect.TypeOf(""), FieldIndex: 2},
 				},
-				ChildMap:    map[string]*mapping.Child{},
+				ChildMap:    map[string]*Child{},
 				AllFields:   []string{"ID", "Name", "UpdatedAt"},
 				PrimaryKey:  []string{"ID"},
 				ParentalKey: []string{},
@@ -125,13 +123,13 @@ func TestMappingBuilder(t *testing.T) {
 				Name    string
 				Version int `orm1:"skip_insert,skip_update"`
 			}{},
-			want: &mapping.EntityMapping{
-				FieldMap: map[string]*mapping.Field{
+			want: &EntityMapping{
+				FieldMap: map[string]*Field{
 					"ID":      {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
 					"Name":    {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 1},
 					"Version": {Name: "Version", Column: "version", Type: reflect.TypeOf(int(0)), FieldIndex: 2},
 				},
-				ChildMap:    map[string]*mapping.Child{},
+				ChildMap:    map[string]*Child{},
 				AllFields:   []string{"ID", "Name", "Version"},
 				PrimaryKey:  []string{"ID"},
 				ParentalKey: []string{},
@@ -146,12 +144,12 @@ func TestMappingBuilder(t *testing.T) {
 				Name    string
 				Ignored string `orm1:"-"`
 			}{},
-			want: &mapping.EntityMapping{
-				FieldMap: map[string]*mapping.Field{
+			want: &EntityMapping{
+				FieldMap: map[string]*Field{
 					"ID":   {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
 					"Name": {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 1},
 				},
-				ChildMap:    map[string]*mapping.Child{},
+				ChildMap:    map[string]*Child{},
 				AllFields:   []string{"ID", "Name"},
 				PrimaryKey:  []string{"ID"},
 				ParentalKey: []string{},
@@ -167,14 +165,14 @@ func TestMappingBuilder(t *testing.T) {
 				DisplayName string `orm1:"column:display_name,skip_insert"`
 				Name        string
 			}{},
-			want: &mapping.EntityMapping{
-				FieldMap: map[string]*mapping.Field{
+			want: &EntityMapping{
+				FieldMap: map[string]*Field{
 					"ID":          {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
 					"UserID":      {Name: "UserID", Column: "user_id", Type: reflect.TypeOf(int64(0)), FieldIndex: 1},
 					"DisplayName": {Name: "DisplayName", Column: "display_name", Type: reflect.TypeOf(""), FieldIndex: 2},
 					"Name":        {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 3},
 				},
-				ChildMap:    map[string]*mapping.Child{},
+				ChildMap:    map[string]*Child{},
 				AllFields:   []string{"ID", "UserID", "DisplayName", "Name"},
 				PrimaryKey:  []string{"ID"},
 				ParentalKey: []string{"UserID"},
@@ -189,13 +187,13 @@ func TestMappingBuilder(t *testing.T) {
 				ParentID int64
 				Name     string
 			}{},
-			want: &mapping.EntityMapping{
-				FieldMap: map[string]*mapping.Field{
+			want: &EntityMapping{
+				FieldMap: map[string]*Field{
 					"ID":       {Name: "ID", Column: "id", Type: reflect.TypeOf(int64(0)), FieldIndex: 0},
 					"ParentID": {Name: "ParentID", Column: "parent_id", Type: reflect.TypeOf(int64(0)), FieldIndex: 1},
 					"Name":     {Name: "Name", Column: "name", Type: reflect.TypeOf(""), FieldIndex: 2},
 				},
-				ChildMap:    map[string]*mapping.Child{},
+				ChildMap:    map[string]*Child{},
 				AllFields:   []string{"ID", "ParentID", "Name"},
 				PrimaryKey:  []string{"ID"},
 				ParentalKey: []string{},
@@ -207,11 +205,11 @@ func TestMappingBuilder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			registry := orm1.NewRegistry()
+			registry := NewRegistry()
 			registry.Register(tt.entity)
 
 			// Build mappings using the mapping package directly
-			mappings := mapping.BuildEntityMappings(
+			mappings := BuildEntityMappings(
 				registry.GetMetadata(),
 				registry.GetRegistered(),
 			)
@@ -228,8 +226,8 @@ func TestMappingBuilder(t *testing.T) {
 			// Ignore unexported pre-computed fields (tested via accessor methods)
 			// Add custom comparer for reflect.Type
 			opts := []cmp.Option{
-				cmpopts.IgnoreFields(mapping.EntityMapping{}, "EntityType"),
-				cmpopts.IgnoreUnexported(mapping.EntityMapping{}),
+				cmpopts.IgnoreFields(EntityMapping{}, "EntityType"),
+				cmpopts.IgnoreUnexported(EntityMapping{}),
 				cmp.Comparer(func(a, b reflect.Type) bool {
 					if a == nil && b == nil {
 						return true
@@ -258,11 +256,11 @@ func TestMappingBuilder_Child(t *testing.T) {
 		Children []*Child `orm1:"child"`
 	}
 
-	registry := orm1.NewRegistry()
+	registry := NewRegistry()
 	registry.Register(&Parent{})
 	registry.Register(&Child{})
 
-	mappings := mapping.BuildEntityMappings(
+	mappings := BuildEntityMappings(
 		registry.GetMetadata(),
 		registry.GetRegistered(),
 	)
@@ -286,7 +284,7 @@ func TestRegister_PanicOnNonStruct(t *testing.T) {
 		}
 	}()
 
-	registry := orm1.NewRegistry()
+	registry := NewRegistry()
 	// Try to register int pointer (not a struct)
 	var num int = 42
 	registry.Register(&num)
@@ -298,14 +296,14 @@ func TestBuild_Idempotent(t *testing.T) {
 		ID int64 `orm1:"primary"`
 	}
 
-	registry := orm1.NewRegistry()
+	registry := NewRegistry()
 	registry.Register(&User{})
 
-	mappings1 := mapping.BuildEntityMappings(
+	mappings1 := BuildEntityMappings(
 		registry.GetMetadata(),
 		registry.GetRegistered(),
 	)
-	mappings2 := mapping.BuildEntityMappings(
+	mappings2 := BuildEntityMappings(
 		registry.GetMetadata(),
 		registry.GetRegistered(),
 	)
@@ -330,9 +328,9 @@ func TestWithSchema(t *testing.T) {
 		ID int64 `orm1:"primary"`
 	}
 
-	registry := orm1.NewRegistry()
-	registry.Register(&User{}, orm1.WithSchema("public"))
-	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
+	registry := NewRegistry()
+	registry.Register(&User{}, WithSchema("public"))
+	mappings := BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	em := mappings[reflect.TypeOf(User{})]
 
@@ -347,9 +345,9 @@ func TestWithTable(t *testing.T) {
 		ID int64 `orm1:"primary"`
 	}
 
-	registry := orm1.NewRegistry()
-	registry.Register(&User{}, orm1.WithTable("users"))
-	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
+	registry := NewRegistry()
+	registry.Register(&User{}, WithTable("users"))
+	mappings := BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	em := mappings[reflect.TypeOf(User{})]
 
@@ -374,11 +372,11 @@ func TestBuilder_MultipleEntities(t *testing.T) {
 		PostID int64 `orm1:"parental"`
 	}
 
-	registry := orm1.NewRegistry()
+	registry := NewRegistry()
 	registry.Register(&User{})
 	registry.Register(&Post{})
 	registry.Register(&Comment{})
-	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
+	mappings := BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	if len(mappings) != 3 {
 		t.Errorf("Expected 3 mappings, got %d", len(mappings))
@@ -402,13 +400,13 @@ func TestBuilder_MultipleOptions(t *testing.T) {
 		Name   string
 	}
 
-	registry := orm1.NewRegistry()
+	registry := NewRegistry()
 	registry.Register(
 		&User{},
-		orm1.WithSchema("public"),
-		orm1.WithTable("users"),
+		WithSchema("public"),
+		WithTable("users"),
 	)
-	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
+	mappings := BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	em := mappings[reflect.TypeOf(User{})]
 
@@ -435,10 +433,10 @@ func TestBuilder_AutoDetectChild_Singular(t *testing.T) {
 		OtherData string
 	}
 
-	registry := orm1.NewRegistry()
+	registry := NewRegistry()
 	registry.Register(&Child{})
 	registry.Register(&Parent{})
-	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
+	mappings := BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	parentMapping := mappings[reflect.TypeOf(Parent{})]
 
@@ -468,10 +466,10 @@ func TestBuilder_AutoDetectChild_Plural(t *testing.T) {
 		OtherData  string
 	}
 
-	registry := orm1.NewRegistry()
+	registry := NewRegistry()
 	registry.Register(&Child{})
 	registry.Register(&Parent{})
-	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
+	mappings := BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	parentMapping := mappings[reflect.TypeOf(Parent{})]
 
@@ -503,9 +501,9 @@ func TestBuilder_IgnoreUnregisteredPtr(t *testing.T) {
 		RegularString string
 	}
 
-	registry := orm1.NewRegistry()
+	registry := NewRegistry()
 	registry.Register(&MyEntity{})
-	mappings := mapping.BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
+	mappings := BuildEntityMappings(registry.GetMetadata(), registry.GetRegistered())
 
 	em := mappings[reflect.TypeOf(MyEntity{})]
 

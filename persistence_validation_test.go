@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
@@ -6,14 +9,13 @@ import (
 	"testing"
 
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 )
 
 // Test Get with invalid dest parameter
 func TestGetErrorOnInvalidDest(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -84,7 +86,7 @@ func TestGetErrorOnInvalidDest(t *testing.T) {
 func TestSaveErrorOnInvalidEntity(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -142,7 +144,7 @@ func TestSaveErrorOnInvalidEntity(t *testing.T) {
 func TestDeleteErrorOnInvalidEntity(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -200,7 +202,7 @@ func TestDeleteErrorOnInvalidEntity(t *testing.T) {
 func TestBatchGetErrorOnInvalidDests(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -284,7 +286,7 @@ func TestBatchGetErrorOnInvalidDests(t *testing.T) {
 func TestBatchSaveErrorOnInvalidEntities(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -350,7 +352,7 @@ func TestBatchSaveErrorOnInvalidEntities(t *testing.T) {
 func TestBatchDeleteErrorOnInvalidEntities(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},

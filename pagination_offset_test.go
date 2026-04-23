@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
@@ -6,14 +9,13 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 )
 
 // TestPaginationWithOffsetNoCursors tests offset pagination via Paginate when no cursors are provided
 func TestPaginationWithOffsetNoCursors(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},

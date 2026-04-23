@@ -1,10 +1,9 @@
-package driver_test
+package orm1
 
 import (
 	"database/sql"
 	"testing"
 
-	"github.com/hanpama/orm1/driver"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -41,7 +40,7 @@ func TestPostgreSQL(t *testing.T) {
 	}
 
 	// Create driver
-	drv := driver.NewPostgres(db)
+	drv := NewPostgres(db)
 	defer drv.Close()
 
 	// Run all driver contracts

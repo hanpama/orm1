@@ -1,24 +1,22 @@
-package mapping_test
+package orm1
 
 import (
 	"reflect"
 	"testing"
-
-	"github.com/hanpama/orm1/mapping"
 )
 
 // TestBuildEntityMappings_IgnoreTag tests that fields with orm1:"-" are excluded
 func TestBuildEntityMappings_IgnoreTag(t *testing.T) {
 	type Entity struct {
-		ID      int64  `orm1:"primary"`
+		ID      int64 `orm1:"primary"`
 		Name    string
 		Ignored string `orm1:"-"`
 	}
 
 	entityType := reflect.TypeOf(Entity{})
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -27,7 +25,7 @@ func TestBuildEntityMappings_IgnoreTag(t *testing.T) {
 	}
 	registered := map[reflect.Type]bool{entityType: true}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	em := mappings[entityType]
 
 	// Ignored field should not be in FieldMap
@@ -65,10 +63,10 @@ func TestBuildEntityMappings_AutoDetectChild_Slice(t *testing.T) {
 	childType := reflect.TypeOf(Child{})
 	parentType := reflect.TypeOf(Parent{})
 
-	childFields := mapping.AnalyzeStruct(childType)
-	parentFields := mapping.AnalyzeStruct(parentType)
+	childFields := AnalyzeStruct(childType)
+	parentFields := AnalyzeStruct(parentType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		childType: {
 			Schema: "",
 			Table:  "child",
@@ -85,7 +83,7 @@ func TestBuildEntityMappings_AutoDetectChild_Slice(t *testing.T) {
 		parentType: true,
 	}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	parentMapping := mappings[parentType]
 
 	// Children should be auto-detected as child relationship
@@ -122,10 +120,10 @@ func TestBuildEntityMappings_AutoDetectChild_Singular(t *testing.T) {
 	childType := reflect.TypeOf(Child{})
 	parentType := reflect.TypeOf(Parent{})
 
-	childFields := mapping.AnalyzeStruct(childType)
-	parentFields := mapping.AnalyzeStruct(parentType)
+	childFields := AnalyzeStruct(childType)
+	parentFields := AnalyzeStruct(parentType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		childType: {
 			Schema: "",
 			Table:  "child",
@@ -142,7 +140,7 @@ func TestBuildEntityMappings_AutoDetectChild_Singular(t *testing.T) {
 		parentType: true,
 	}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	parentMapping := mappings[parentType]
 
 	// Child should be auto-detected as child relationship
@@ -168,9 +166,9 @@ func TestBuildEntityMappings_IDAutoPK(t *testing.T) {
 	}
 
 	entityType := reflect.TypeOf(Entity{})
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -179,7 +177,7 @@ func TestBuildEntityMappings_IDAutoPK(t *testing.T) {
 	}
 	registered := map[reflect.Type]bool{entityType: true}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	em := mappings[entityType]
 
 	// ID should be auto-detected as primary key
@@ -216,9 +214,9 @@ func TestBuildEntityMappings_SkipInsert(t *testing.T) {
 	}
 
 	entityType := reflect.TypeOf(Entity{})
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -227,7 +225,7 @@ func TestBuildEntityMappings_SkipInsert(t *testing.T) {
 	}
 	registered := map[reflect.Type]bool{entityType: true}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	em := mappings[entityType]
 
 	// CreatedAt should NOT be in Insertable
@@ -271,9 +269,9 @@ func TestBuildEntityMappings_SkipUpdate(t *testing.T) {
 	}
 
 	entityType := reflect.TypeOf(Entity{})
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -282,7 +280,7 @@ func TestBuildEntityMappings_SkipUpdate(t *testing.T) {
 	}
 	registered := map[reflect.Type]bool{entityType: true}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	em := mappings[entityType]
 
 	// UpdatedAt should be in Insertable
@@ -314,9 +312,9 @@ func TestBuildEntityMappings_AutoTag(t *testing.T) {
 	}
 
 	entityType := reflect.TypeOf(Entity{})
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -325,7 +323,7 @@ func TestBuildEntityMappings_AutoTag(t *testing.T) {
 	}
 	registered := map[reflect.Type]bool{entityType: true}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	em := mappings[entityType]
 
 	// Version should NOT be in Insertable
@@ -368,9 +366,9 @@ func TestBuildEntityMappings_UnregisteredStructPtr(t *testing.T) {
 	}
 
 	entityType := reflect.TypeOf(Entity{})
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -380,7 +378,7 @@ func TestBuildEntityMappings_UnregisteredStructPtr(t *testing.T) {
 	registered := map[reflect.Type]bool{entityType: true}
 	// Note: Other is NOT registered
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	em := mappings[entityType]
 
 	// Unknown should not be in FieldMap
@@ -403,14 +401,14 @@ func TestBuildEntityMappings_SliceOfNonEntity(t *testing.T) {
 	type Entity struct {
 		ID      int64 `orm1:"primary"`
 		Name    string
-		Strings []string  // Slice of primitives
-		Others  []*Other  // Slice of unregistered structs
+		Strings []string // Slice of primitives
+		Others  []*Other // Slice of unregistered structs
 	}
 
 	entityType := reflect.TypeOf(Entity{})
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -419,7 +417,7 @@ func TestBuildEntityMappings_SliceOfNonEntity(t *testing.T) {
 	}
 	registered := map[reflect.Type]bool{entityType: true}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	em := mappings[entityType]
 
 	// Strings should not be in FieldMap (it's a slice)
@@ -447,10 +445,10 @@ func TestBuildEntityMappings_ExplicitChildTag(t *testing.T) {
 	childType := reflect.TypeOf(Child{})
 	parentType := reflect.TypeOf(Parent{})
 
-	childFields := mapping.AnalyzeStruct(childType)
-	parentFields := mapping.AnalyzeStruct(parentType)
+	childFields := AnalyzeStruct(childType)
+	parentFields := AnalyzeStruct(parentType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		childType: {
 			Schema: "",
 			Table:  "child",
@@ -467,7 +465,7 @@ func TestBuildEntityMappings_ExplicitChildTag(t *testing.T) {
 		parentType: true,
 	}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	parentMapping := mappings[parentType]
 
 	// Children should be in ChildMap
@@ -490,9 +488,9 @@ func TestBuildEntityMappings_ParentalKey(t *testing.T) {
 	}
 
 	entityType := reflect.TypeOf(Entity{})
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -501,7 +499,7 @@ func TestBuildEntityMappings_ParentalKey(t *testing.T) {
 	}
 	registered := map[reflect.Type]bool{entityType: true}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	em := mappings[entityType]
 
 	// ParentID should be in ParentalKey
@@ -538,9 +536,9 @@ func TestBuildEntityMappings_CompositeKey(t *testing.T) {
 	}
 
 	entityType := reflect.TypeOf(Entity{})
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -549,7 +547,7 @@ func TestBuildEntityMappings_CompositeKey(t *testing.T) {
 	}
 	registered := map[reflect.Type]bool{entityType: true}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	em := mappings[entityType]
 
 	// PrimaryKey should have both Key1 and Key2
@@ -596,9 +594,9 @@ func TestBuildEntityMappings_ColumnTag(t *testing.T) {
 	}
 
 	entityType := reflect.TypeOf(Entity{})
-	fields := mapping.AnalyzeStruct(entityType)
+	fields := AnalyzeStruct(entityType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		entityType: {
 			Schema: "",
 			Table:  "entity",
@@ -607,7 +605,7 @@ func TestBuildEntityMappings_ColumnTag(t *testing.T) {
 	}
 	registered := map[reflect.Type]bool{entityType: true}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 	em := mappings[entityType]
 
 	// FullName field should have custom column name
@@ -634,10 +632,10 @@ func TestBuildEntityMappings_MultipleEntities(t *testing.T) {
 	userType := reflect.TypeOf(User{})
 	postType := reflect.TypeOf(Post{})
 
-	userFields := mapping.AnalyzeStruct(userType)
-	postFields := mapping.AnalyzeStruct(postType)
+	userFields := AnalyzeStruct(userType)
+	postFields := AnalyzeStruct(postType)
 
-	metadata := map[reflect.Type]mapping.EntityMetadata{
+	metadata := map[reflect.Type]EntityMetadata{
 		userType: {
 			Schema: "",
 			Table:  "users",
@@ -654,7 +652,7 @@ func TestBuildEntityMappings_MultipleEntities(t *testing.T) {
 		postType: true,
 	}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 
 	if len(mappings) != 2 {
 		t.Errorf("Expected 2 mappings, got %d", len(mappings))
@@ -679,10 +677,10 @@ func TestBuildEntityMappings_MultipleEntities(t *testing.T) {
 
 // TestBuildEntityMappings_EmptyMetadata tests building with empty metadata
 func TestBuildEntityMappings_EmptyMetadata(t *testing.T) {
-	metadata := map[reflect.Type]mapping.EntityMetadata{}
+	metadata := map[reflect.Type]EntityMetadata{}
 	registered := map[reflect.Type]bool{}
 
-	mappings := mapping.BuildEntityMappings(metadata, registered)
+	mappings := BuildEntityMappings(metadata, registered)
 
 	if len(mappings) != 0 {
 		t.Errorf("Expected 0 mappings, got %d", len(mappings))

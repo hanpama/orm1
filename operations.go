@@ -1,9 +1,7 @@
-package driver
-
-import "github.com/hanpama/orm1/key"
+package orm1
 
 // SelectOp represents a batch SELECT operation for entity retrieval.
-// Used by Get and BatchGet operations to load entities by primary key.
+// Used by Get and BatchGet operations to load entities by primary
 //
 // This is a command from Session to Backend, specifying:
 // - Which table to query (FromSchema, FromTable)
@@ -13,11 +11,11 @@ import "github.com/hanpama/orm1/key"
 //
 // Keys[i] provides the key values for each entity to retrieve.
 type SelectOp struct {
-	Select     []string  // Columns to select
-	FromSchema string    // Database schema (optional)
-	FromTable  string    // Table name
-	KeyColumns []string  // Columns used for WHERE clause (typically primary key)
-	Keys       []key.Key // Batch key values
+	Select     []string // Columns to select
+	FromSchema string   // Database schema (optional)
+	FromTable  string   // Table name
+	KeyColumns []string // Columns used for WHERE clause (typically primary key)
+	Keys       []Key    // Batch key values
 }
 
 // InsertOp represents a batch INSERT operation for entity creation.
@@ -31,11 +29,11 @@ type SelectOp struct {
 //
 // Values[i] corresponds to Insert columns order: Values[i][j] maps to Insert[j].
 type InsertOp struct {
-	IntoSchema string    // Database schema (optional)
-	IntoTable  string    // Table name
-	Insert     []string  // Columns to insert
-	Returning  []string  // Columns to return (e.g., auto-generated columns)
-	Values     [][]any   // Batch insert values, Values[i][j] maps to Insert[j]
+	IntoSchema string   // Database schema (optional)
+	IntoTable  string   // Table name
+	Insert     []string // Columns to insert
+	Returning  []string // Columns to return (e.g., auto-generated columns)
+	Values     [][]any  // Batch insert values, Values[i][j] maps to Insert[j]
 }
 
 // UpdateOp represents a batch UPDATE operation for entity modification.
@@ -68,8 +66,8 @@ type UpdateOp struct {
 //
 // Keys[i] provides the key values for each entity to delete.
 type DeleteOp struct {
-	FromSchema string    // Database schema (optional)
-	FromTable  string    // Table name
-	KeyColumns []string  // Columns used for WHERE clause (typically primary key)
-	Keys       []key.Key // Batch key values
+	FromSchema string   // Database schema (optional)
+	FromTable  string   // Table name
+	KeyColumns []string // Columns used for WHERE clause (typically primary key)
+	Keys       []Key    // Batch key values
 }

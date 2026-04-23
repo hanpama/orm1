@@ -3,7 +3,7 @@
 // Key is a comparable interface that can be used as a map key,
 // enabling efficient lookups without serialization overhead.
 // It supports composite keys with up to 9 column values.
-package key
+package orm1
 
 // Key represents an entity's primary or foreign key value(s).
 // It is a comparable interface that can be used as a map key.
@@ -28,8 +28,8 @@ func (k key0) At(index int) any { panic("key0: index out of range") }
 // key1 represents a single-column key
 type key1 struct{ V0 any }
 
-func (k key1) keyMarker()       {}
-func (k key1) Length() int      { return 1 }
+func (k key1) keyMarker()  {}
+func (k key1) Length() int { return 1 }
 func (k key1) At(index int) any {
 	if index == 0 {
 		return k.V0
@@ -40,8 +40,8 @@ func (k key1) At(index int) any {
 // key2 represents a 2-column composite key
 type key2 struct{ V0, V1 any }
 
-func (k key2) keyMarker()       {}
-func (k key2) Length() int      { return 2 }
+func (k key2) keyMarker()  {}
+func (k key2) Length() int { return 2 }
 func (k key2) At(index int) any {
 	switch index {
 	case 0:
@@ -56,8 +56,8 @@ func (k key2) At(index int) any {
 // key3 represents a 3-column composite key
 type key3 struct{ V0, V1, V2 any }
 
-func (k key3) keyMarker()       {}
-func (k key3) Length() int      { return 3 }
+func (k key3) keyMarker()  {}
+func (k key3) Length() int { return 3 }
 func (k key3) At(index int) any {
 	switch index {
 	case 0:
@@ -74,8 +74,8 @@ func (k key3) At(index int) any {
 // key4 represents a 4-column composite key
 type key4 struct{ V0, V1, V2, V3 any }
 
-func (k key4) keyMarker()       {}
-func (k key4) Length() int      { return 4 }
+func (k key4) keyMarker()  {}
+func (k key4) Length() int { return 4 }
 func (k key4) At(index int) any {
 	switch index {
 	case 0:
@@ -94,8 +94,8 @@ func (k key4) At(index int) any {
 // key5 represents a 5-column composite key
 type key5 struct{ V0, V1, V2, V3, V4 any }
 
-func (k key5) keyMarker()       {}
-func (k key5) Length() int      { return 5 }
+func (k key5) keyMarker()  {}
+func (k key5) Length() int { return 5 }
 func (k key5) At(index int) any {
 	switch index {
 	case 0:
@@ -116,8 +116,8 @@ func (k key5) At(index int) any {
 // key6 represents a 6-column composite key
 type key6 struct{ V0, V1, V2, V3, V4, V5 any }
 
-func (k key6) keyMarker()       {}
-func (k key6) Length() int      { return 6 }
+func (k key6) keyMarker()  {}
+func (k key6) Length() int { return 6 }
 func (k key6) At(index int) any {
 	switch index {
 	case 0:
@@ -140,8 +140,8 @@ func (k key6) At(index int) any {
 // key7 represents a 7-column composite key
 type key7 struct{ V0, V1, V2, V3, V4, V5, V6 any }
 
-func (k key7) keyMarker()       {}
-func (k key7) Length() int      { return 7 }
+func (k key7) keyMarker()  {}
+func (k key7) Length() int { return 7 }
 func (k key7) At(index int) any {
 	switch index {
 	case 0:
@@ -166,8 +166,8 @@ func (k key7) At(index int) any {
 // key8 represents an 8-column composite key
 type key8 struct{ V0, V1, V2, V3, V4, V5, V6, V7 any }
 
-func (k key8) keyMarker()       {}
-func (k key8) Length() int      { return 8 }
+func (k key8) keyMarker()  {}
+func (k key8) Length() int { return 8 }
 func (k key8) At(index int) any {
 	switch index {
 	case 0:
@@ -194,8 +194,8 @@ func (k key8) At(index int) any {
 // key9 represents a 9-column composite key
 type key9 struct{ V0, V1, V2, V3, V4, V5, V6, V7, V8 any }
 
-func (k key9) keyMarker()       {}
-func (k key9) Length() int      { return 9 }
+func (k key9) keyMarker()  {}
+func (k key9) Length() int { return 9 }
 func (k key9) At(index int) any {
 	switch index {
 	case 0:

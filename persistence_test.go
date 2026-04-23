@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
@@ -5,13 +8,12 @@ import (
 	"testing"
 
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 )
 
 func TestPersistenceSimpleAuto(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -129,7 +131,7 @@ func TestPersistenceSimpleAuto(t *testing.T) {
 func TestPersistenceSimpleUUID(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -233,7 +235,7 @@ func TestPersistenceSimpleUUID(t *testing.T) {
 func TestPersistenceComposite(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -339,7 +341,7 @@ func TestPersistenceComposite(t *testing.T) {
 func TestPersistenceSpecialQuote(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -460,7 +462,7 @@ func TestPersistenceSpecialQuote(t *testing.T) {
 func TestPersistenceAggregate(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},

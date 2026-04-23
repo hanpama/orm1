@@ -85,14 +85,12 @@ package orm1
 import (
 	"fmt"
 	"reflect"
-
-	"github.com/hanpama/orm1/mapping"
 )
 
 // childrenKey uniquely identifies a child collection within a parent entity.
 type childrenKey struct {
-	parent any            // parent entity pointer
-	child  *mapping.Child // Child metadata pointer
+	parent any    // parent entity pointer
+	child  *Child // Child metadata pointer
 }
 
 // txState represents the state of persisted entities and children at a transaction boundary.
@@ -107,7 +105,7 @@ type txState struct {
 // All persistence operations (Get, Save, Delete) are performed through a Session.
 type Session struct {
 	backend    SessionBackend
-	mappings   map[reflect.Type]*mapping.EntityMapping
+	mappings   map[reflect.Type]*EntityMapping
 	scanBuffer []any // Reusable buffer for scanEntity to avoid allocations
 
 	persisted map[any]struct{}      // entity pointer → persisted in DB
@@ -117,7 +115,7 @@ type Session struct {
 }
 
 // newSession creates a new Session with the given backend and mappings.
-func newSession(backend SessionBackend, mappings map[reflect.Type]*mapping.EntityMapping) *Session {
+func newSession(backend SessionBackend, mappings map[reflect.Type]*EntityMapping) *Session {
 	return &Session{
 		backend:   backend,
 		mappings:  mappings,
@@ -126,7 +124,7 @@ func newSession(backend SessionBackend, mappings map[reflect.Type]*mapping.Entit
 	}
 }
 
-func (s *Session) getMapping(entityType reflect.Type) (*mapping.EntityMapping, error) {
+func (s *Session) getMapping(entityType reflect.Type) (*EntityMapping, error) {
 	mapping, ok := s.mappings[entityType]
 	if !ok {
 		return nil, fmt.Errorf("no mapping found for type %s", entityType)
@@ -151,12 +149,12 @@ func (s *Session) unmarkPersisted(entity any) {
 }
 
 // indexChildren stores children entities for a parent entity and child relationship.
-func (s *Session) indexChildren(parent any, childMeta *mapping.Child, children []any) {
+func (s *Session) indexChildren(parent any, childMeta *Child, children []any) {
 	s.children[childrenKey{parent: parent, child: childMeta}] = children
 }
 
 // getChildren retrieves children entities for a parent entity and child relationship.
-func (s *Session) getChildren(parent any, childMeta *mapping.Child) []any {
+func (s *Session) getChildren(parent any, childMeta *Child) []any {
 	return s.children[childrenKey{parent: parent, child: childMeta}]
 }
 
@@ -164,7 +162,7 @@ func (s *Session) getChildren(parent any, childMeta *mapping.Child) []any {
 // fieldNames must be explicitly provided - no nil/default behavior.
 // Tracking must be done by the caller if needed.
 // Reuses Session.scanBuffer to avoid allocations.
-func (s *Session) scanEntity(em *mapping.EntityMapping, entityPtr any, row Rows, fieldNames []string) error {
+func (s *Session) scanEntity(em *EntityMapping, entityPtr any, row Rows, fieldNames []string) error {
 	// Reuse scanBuffer, resetting to length 0 while keeping capacity
 	s.scanBuffer = s.scanBuffer[:0]
 

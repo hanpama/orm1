@@ -1,13 +1,11 @@
-package driver_test
+package orm1
 
 import (
 	"context"
 	"testing"
-
-	"github.com/hanpama/orm1/driver"
 )
 
-func RunDriverContracts(t *testing.T, drv driver.Driver, schema, table string) {
+func RunDriverContracts(t *testing.T, drv Driver, schema, table string) {
 	ctx := context.Background()
 
 	t.Run("Driver", func(t *testing.T) {
@@ -37,7 +35,7 @@ func RunDriverContracts(t *testing.T, drv driver.Driver, schema, table string) {
 	})
 }
 
-func testDriverContracts(t *testing.T, drv driver.Driver) {
+func testDriverContracts(t *testing.T, drv Driver) {
 	t.Run("CreateBackend_Independence", func(t *testing.T) {
 		b1 := drv.CreateBackend()
 		b2 := drv.CreateBackend()

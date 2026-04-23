@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
@@ -6,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 )
 
 // TestTransaction_StateRestoration_Rollback verifies that Rollback restores
@@ -14,7 +16,7 @@ import (
 func TestTransaction_StateRestoration_Rollback(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -98,7 +100,7 @@ func TestTransaction_StateRestoration_Rollback(t *testing.T) {
 func TestTransaction_StateRetention_Commit(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -169,7 +171,7 @@ func TestTransaction_StateRetention_Commit(t *testing.T) {
 func TestTransaction_Nested_InnerRollback(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -267,7 +269,7 @@ func TestTransaction_Nested_InnerRollback(t *testing.T) {
 func TestTransaction_Nested_OuterRollback(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -364,7 +366,7 @@ func TestTransaction_Nested_OuterRollback(t *testing.T) {
 func TestTransaction_Idempotency_DoubleCommit(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -398,7 +400,7 @@ func TestTransaction_Idempotency_DoubleCommit(t *testing.T) {
 func TestTransaction_Idempotency_CommitThenRollback(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -432,7 +434,7 @@ func TestTransaction_Idempotency_CommitThenRollback(t *testing.T) {
 func TestTransaction_Idempotency_DoubleRollback(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -466,7 +468,7 @@ func TestTransaction_Idempotency_DoubleRollback(t *testing.T) {
 func TestTransaction_Validation_NestedOptions(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -510,7 +512,7 @@ func TestTransaction_Validation_NestedOptions(t *testing.T) {
 func TestTransaction_Validation_DepthMismatch(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -555,7 +557,7 @@ func TestTransaction_Validation_DepthMismatch(t *testing.T) {
 func TestTransaction_ReverseRollback(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -657,7 +659,7 @@ func TestTransaction_ReverseRollback(t *testing.T) {
 func TestTransaction_ParentRollbackThenChildCommit(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -703,7 +705,7 @@ func TestTransaction_ParentRollbackThenChildCommit(t *testing.T) {
 func TestTransaction_HelperFunctions(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},

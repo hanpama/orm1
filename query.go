@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-
-	"github.com/hanpama/orm1/mapping"
-	"github.com/hanpama/orm1/sql"
 )
 
 // EntityQuery provides a type-safe query builder for entities.
@@ -14,13 +11,13 @@ import (
 // Supports WHERE, JOIN, ORDER BY, GROUP BY, HAVING, and pagination.
 type EntityQuery[T any] struct {
 	session      *Session
-	mapping      *mapping.EntityMapping
+	mapping      *EntityMapping
 	alias        string
-	joins        map[string]*sql.Join
-	whereConds   []sql.SQL
-	havingConds  []sql.SQL
-	orderByOpts  []sql.OrderBy
-	groupByExprs []sql.SQL
+	joins        map[string]*Join
+	whereConds   []SQL
+	havingConds  []SQL
+	orderByOpts  []OrderBy
+	groupByExprs []SQL
 	offset       *int
 }
 
@@ -42,22 +39,22 @@ func NewEntityQuery[T any](session *Session, alias string) *EntityQuery[T] {
 		session:      session,
 		mapping:      mapping,
 		alias:        alias,
-		joins:        make(map[string]*sql.Join),
-		whereConds:   []sql.SQL{},
-		havingConds:  []sql.SQL{},
-		orderByOpts:  []sql.OrderBy{},
-		groupByExprs: []sql.SQL{},
+		joins:        make(map[string]*Join),
+		whereConds:   []SQL{},
+		havingConds:  []SQL{},
+		orderByOpts:  []OrderBy{},
+		groupByExprs: []SQL{},
 	}
 }
 
 // Join adds an INNER JOIN to the query.
 // table is the table name, alias is its query alias, on is the join condition.
 func (q *EntityQuery[T]) Join(table string, alias string, on string, params ...any) *EntityQuery[T] {
-	q.joins[alias] = &sql.Join{
+	q.joins[alias] = &Join{
 		Type:  "JOIN",
-		Table: sql.SQLText{Text: table},
-		Alias: sql.SQLText{Text: alias},
-		On:    sql.ParseSQL(on, params...),
+		Table: SQLText{Text: table},
+		Alias: SQLText{Text: alias},
+		On:    ParseSQL(on, params...),
 	}
 	return q
 }
@@ -65,11 +62,11 @@ func (q *EntityQuery[T]) Join(table string, alias string, on string, params ...a
 // LeftJoin adds a LEFT OUTER JOIN to the query.
 // table is the table name, alias is its query alias, on is the join condition.
 func (q *EntityQuery[T]) LeftJoin(table string, alias string, on string, params ...any) *EntityQuery[T] {
-	q.joins[alias] = &sql.Join{
+	q.joins[alias] = &Join{
 		Type:  "LEFT JOIN",
-		Table: sql.SQLText{Text: table},
-		Alias: sql.SQLText{Text: alias},
-		On:    sql.ParseSQL(on, params...),
+		Table: SQLText{Text: table},
+		Alias: SQLText{Text: alias},
+		On:    ParseSQL(on, params...),
 	}
 	return q
 }
@@ -77,14 +74,14 @@ func (q *EntityQuery[T]) LeftJoin(table string, alias string, on string, params 
 // Where adds a WHERE condition to the query.
 // Multiple Where calls are combined with AND.
 func (q *EntityQuery[T]) Where(condition string, params ...any) *EntityQuery[T] {
-	q.whereConds = append(q.whereConds, sql.ParseSQL(fmt.Sprintf("(%s)", condition), params...))
+	q.whereConds = append(q.whereConds, ParseSQL(fmt.Sprintf("(%s)", condition), params...))
 	return q
 }
 
 // Having adds a HAVING condition to the query.
 // Multiple Having calls are combined with AND.
 func (q *EntityQuery[T]) Having(condition string, params ...any) *EntityQuery[T] {
-	q.havingConds = append(q.havingConds, sql.ParseSQL(fmt.Sprintf("(%s)", condition), params...))
+	q.havingConds = append(q.havingConds, ParseSQL(fmt.Sprintf("(%s)", condition), params...))
 	return q
 }
 
@@ -92,7 +89,7 @@ func (q *EntityQuery[T]) Having(condition string, params ...any) *EntityQuery[T]
 func (q *EntityQuery[T]) GroupByPrimaryKey() *EntityQuery[T] {
 	for _, fieldName := range q.mapping.PrimaryKey {
 		field := q.mapping.FieldMap[fieldName]
-		q.groupByExprs = append(q.groupByExprs, sql.SQLQN{Part1: q.alias, Part2: field.Column})
+		q.groupByExprs = append(q.groupByExprs, SQLQN{Part1: q.alias, Part2: field.Column})
 	}
 	return q
 }
@@ -104,16 +101,16 @@ func (q *EntityQuery[T]) Offset(n int) *EntityQuery[T] {
 }
 
 // OrderBy sets the ORDER BY clause for the query.
-func (q *EntityQuery[T]) OrderBy(orderBys ...sql.OrderBy) *EntityQuery[T] {
+func (q *EntityQuery[T]) OrderBy(orderBys ...OrderBy) *EntityQuery[T] {
 	q.orderByOpts = orderBys
 	return q
 }
 
 // Asc creates an ascending OrderBy clause with NULLS LAST (PostgreSQL/Oracle standard).
 // This ensures consistent behavior across all databases (PostgreSQL, SQLite, Oracle).
-func (q *EntityQuery[T]) Asc(expr string, params ...any) sql.OrderBy {
-	return sql.OrderBy{
-		Expr:      sql.ParseSQL(expr, params...),
+func (q *EntityQuery[T]) Asc(expr string, params ...any) OrderBy {
+	return OrderBy{
+		Expr:      ParseSQL(expr, params...),
 		Ascending: true,
 		NullsLast: true,
 	}
@@ -121,93 +118,93 @@ func (q *EntityQuery[T]) Asc(expr string, params ...any) sql.OrderBy {
 
 // Desc creates a descending OrderBy clause with NULLS FIRST (PostgreSQL/Oracle standard).
 // This ensures consistent behavior across all databases (PostgreSQL, SQLite, Oracle).
-func (q *EntityQuery[T]) Desc(expr string, params ...any) sql.OrderBy {
-	return sql.OrderBy{
-		Expr:      sql.ParseSQL(expr, params...),
+func (q *EntityQuery[T]) Desc(expr string, params ...any) OrderBy {
+	return OrderBy{
+		Expr:      ParseSQL(expr, params...),
 		Ascending: false,
 		NullsLast: false,
 	}
 }
 
 // AscNullsLast creates an ascending OrderBy clause with NULL values sorted last.
-func (q *EntityQuery[T]) AscNullsLast(expr string, params ...any) sql.OrderBy {
-	return sql.OrderBy{
-		Expr:      sql.ParseSQL(expr, params...),
+func (q *EntityQuery[T]) AscNullsLast(expr string, params ...any) OrderBy {
+	return OrderBy{
+		Expr:      ParseSQL(expr, params...),
 		Ascending: true,
 		NullsLast: true,
 	}
 }
 
 // AscNullsFirst creates an ascending OrderBy clause with NULL values sorted first.
-func (q *EntityQuery[T]) AscNullsFirst(expr string, params ...any) sql.OrderBy {
-	return sql.OrderBy{
-		Expr:      sql.ParseSQL(expr, params...),
+func (q *EntityQuery[T]) AscNullsFirst(expr string, params ...any) OrderBy {
+	return OrderBy{
+		Expr:      ParseSQL(expr, params...),
 		Ascending: true,
 		NullsLast: false,
 	}
 }
 
 // DescNullsLast creates a descending OrderBy clause with NULL values sorted last.
-func (q *EntityQuery[T]) DescNullsLast(expr string, params ...any) sql.OrderBy {
-	return sql.OrderBy{
-		Expr:      sql.ParseSQL(expr, params...),
+func (q *EntityQuery[T]) DescNullsLast(expr string, params ...any) OrderBy {
+	return OrderBy{
+		Expr:      ParseSQL(expr, params...),
 		Ascending: false,
 		NullsLast: true,
 	}
 }
 
 // DescNullsFirst creates a descending OrderBy clause with NULL values sorted first.
-func (q *EntityQuery[T]) DescNullsFirst(expr string, params ...any) sql.OrderBy {
-	return sql.OrderBy{
-		Expr:      sql.ParseSQL(expr, params...),
+func (q *EntityQuery[T]) DescNullsFirst(expr string, params ...any) OrderBy {
+	return OrderBy{
+		Expr:      ParseSQL(expr, params...),
 		Ascending: false,
 		NullsLast: false,
 	}
 }
 
-func (q *EntityQuery[T]) buildSelectColumns() []sql.SQL {
-	selectCols := make([]sql.SQL, len(q.mapping.AllFields))
+func (q *EntityQuery[T]) buildSelectColumns() []SQL {
+	selectCols := make([]SQL, len(q.mapping.AllFields))
 	for i, fieldName := range q.mapping.AllFields {
 		field := q.mapping.FieldMap[fieldName]
-		selectCols[i] = sql.SQLQN{Part1: q.alias, Part2: field.Column}
+		selectCols[i] = SQLQN{Part1: q.alias, Part2: field.Column}
 	}
 	return selectCols
 }
 
-func (q *EntityQuery[T]) buildPrimaryKeyColumns() []sql.SQL {
-	selectCols := make([]sql.SQL, 0, len(q.mapping.PrimaryKey))
+func (q *EntityQuery[T]) buildPrimaryKeyColumns() []SQL {
+	selectCols := make([]SQL, 0, len(q.mapping.PrimaryKey))
 	for _, fieldName := range q.mapping.PrimaryKey {
 		field := q.mapping.FieldMap[fieldName]
-		selectCols = append(selectCols, sql.SQLQN{Part1: q.alias, Part2: field.Column})
+		selectCols = append(selectCols, SQLQN{Part1: q.alias, Part2: field.Column})
 	}
 	return selectCols
 }
 
-func (q *EntityQuery[T]) buildJoins() []sql.Join {
-	joins := make([]sql.Join, 0, len(q.joins))
+func (q *EntityQuery[T]) buildJoins() []Join {
+	joins := make([]Join, 0, len(q.joins))
 	for _, join := range q.joins {
 		joins = append(joins, *join)
 	}
 	return joins
 }
 
-func (q *EntityQuery[T]) buildWhereClause() *sql.SQL {
+func (q *EntityQuery[T]) buildWhereClause() *SQL {
 	if len(q.whereConds) == 0 {
 		return nil
 	}
-	var w sql.SQL = sql.SQLAll{Els: q.whereConds}
+	var w SQL = SQLAll{Els: q.whereConds}
 	return &w
 }
 
-func (q *EntityQuery[T]) buildHavingClause() *sql.SQL {
+func (q *EntityQuery[T]) buildHavingClause() *SQL {
 	if len(q.havingConds) == 0 {
 		return nil
 	}
-	var h sql.SQL = sql.SQLAll{Els: q.havingConds}
+	var h SQL = SQLAll{Els: q.havingConds}
 	return &h
 }
 
-func (q *EntityQuery[T]) buildGroupBy() []sql.SQL {
+func (q *EntityQuery[T]) buildGroupBy() []SQL {
 	if len(q.groupByExprs) == 0 {
 		return nil
 	}
@@ -217,22 +214,22 @@ func (q *EntityQuery[T]) buildGroupBy() []sql.SQL {
 // fetch executes the query and returns matching entities with optional limit.
 // All returned entities are marked as persisted.
 func (q *EntityQuery[T]) fetch(ctx context.Context, limit *int) ([]*T, error) {
-	var limitSQL, offsetSQL *sql.SQL
+	var limitSQL, offsetSQL *SQL
 
 	if limit != nil {
-		var l sql.SQL = sql.SQLParam{Value: *limit}
+		var l SQL = SQLParam{Value: *limit}
 		limitSQL = &l
 	}
 
 	if q.offset != nil {
-		var o sql.SQL = sql.SQLParam{Value: *q.offset}
+		var o SQL = SQLParam{Value: *q.offset}
 		offsetSQL = &o
 	}
 
-	selectStmt := &sql.SQLQuery{
+	selectStmt := &SQLQuery{
 		Select:    q.buildSelectColumns(),
-		FromTable: sql.SQLQN{Part1: q.mapping.Schema, Part2: q.mapping.Table},
-		FromAlias: sql.SQLText{Text: q.alias},
+		FromTable: SQLQN{Part1: q.mapping.Schema, Part2: q.mapping.Table},
+		FromAlias: SQLText{Text: q.alias},
 		Joins:     q.buildJoins(),
 		Where:     q.buildWhereClause(),
 		GroupBy:   q.buildGroupBy(),
@@ -311,10 +308,10 @@ func (q *EntityQuery[T]) FetchOne(ctx context.Context) (*T, error) {
 
 // Count returns the number of entities matching the query.
 func (q *EntityQuery[T]) Count(ctx context.Context) (int64, error) {
-	selectStmt := &sql.SQLQuery{
+	selectStmt := &SQLQuery{
 		Select:    q.buildPrimaryKeyColumns(),
-		FromTable: sql.SQLQN{Part1: q.mapping.Schema, Part2: q.mapping.Table},
-		FromAlias: sql.SQLText{Text: q.alias},
+		FromTable: SQLQN{Part1: q.mapping.Schema, Part2: q.mapping.Table},
+		FromAlias: SQLText{Text: q.alias},
 		Joins:     q.buildJoins(),
 		Where:     q.buildWhereClause(),
 		GroupBy:   q.buildGroupBy(),

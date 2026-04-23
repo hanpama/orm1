@@ -1,16 +1,14 @@
-package mapping_test
+package orm1
 
 import (
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/hanpama/orm1/mapping"
 )
 
 // Test entities
 type User struct {
-	ID        int64  `orm1:"primary"`
+	ID        int64 `orm1:"primary"`
 	Name      string
 	Email     string
 	CreatedAt time.Time `orm1:"skip_insert"`
@@ -19,10 +17,10 @@ type User struct {
 }
 
 type Post struct {
-	ID       int64  `orm1:"primary"`
-	UserID   int64  `orm1:"parental"`
+	ID       int64 `orm1:"primary"`
+	UserID   int64 `orm1:"parental"`
 	Title    string
-	Author   *User  `orm1:"child"`
+	Author   *User      `orm1:"child"`
 	Comments []*Comment `orm1:"child"`
 }
 
@@ -33,21 +31,21 @@ type Comment struct {
 }
 
 // buildTestMappings creates EntityMappings for testing without importing orm1.
-func buildTestMappings(entityTypes ...reflect.Type) map[reflect.Type]*mapping.EntityMapping {
-	metadata := make(map[reflect.Type]mapping.EntityMetadata)
+func buildTestMappings(entityTypes ...reflect.Type) map[reflect.Type]*EntityMapping {
+	metadata := make(map[reflect.Type]EntityMetadata)
 	registered := make(map[reflect.Type]bool)
 
 	for _, entityType := range entityTypes {
 		registered[entityType] = true
-		fields := mapping.AnalyzeStruct(entityType)
-		metadata[entityType] = mapping.EntityMetadata{
+		fields := AnalyzeStruct(entityType)
+		metadata[entityType] = EntityMetadata{
 			Schema: "",
-			Table:  mapping.ToSnakeCase(entityType.Name()),
+			Table:  ToSnakeCase(entityType.Name()),
 			Fields: fields,
 		}
 	}
 
-	return mapping.BuildEntityMappings(metadata, registered)
+	return BuildEntityMappings(metadata, registered)
 }
 
 // TestField_GetValue tests Field.GetValue() with various types
@@ -430,12 +428,12 @@ func TestChild_Set_Plural(t *testing.T) {
 
 // TestComputeColumns tests ComputeColumns helper function
 func TestComputeColumns(t *testing.T) {
-	fieldMap := map[string]*mapping.Field{
+	fieldMap := map[string]*Field{
 		"ID":   {Name: "ID", Column: "id"},
 		"Name": {Name: "Name", Column: "name"},
 	}
 
-	columns := mapping.ComputeColumns([]string{"ID", "Name"}, fieldMap)
+	columns := ComputeColumns([]string{"ID", "Name"}, fieldMap)
 
 	expected := []string{"id", "name"}
 	if !reflect.DeepEqual(columns, expected) {

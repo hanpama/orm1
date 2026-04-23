@@ -1,16 +1,13 @@
-package driver_test
+package orm1
 
 import (
 	"context"
 	"testing"
-
-	"github.com/hanpama/orm1/driver"
-	"github.com/hanpama/orm1/sql"
 )
 
-func testComplexQueryContracts(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testComplexQueryContracts(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Insert test data
-	insertOp := driver.InsertOp{
+	insertOp := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -56,22 +53,22 @@ func testComplexQueryContracts(t *testing.T, ctx context.Context, backend driver
 	})
 }
 
-func testFetchQueryBasic(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testFetchQueryBasic(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: FetchQuery executes structured query
-	var fromTable sql.SQL
+	var fromTable SQL
 	if schema != "" {
-		fromTable = sql.SQLQN{Part1: schema, Part2: table}
+		fromTable = SQLQN{Part1: schema, Part2: table}
 	} else {
-		fromTable = sql.SQLN{Part: table}
+		fromTable = SQLN{Part: table}
 	}
 
-	query := sql.SQLQuery{
-		Select: []sql.SQL{
-			sql.SQLN{Part: "name"},
-			sql.SQLN{Part: "value"},
+	query := SQLQuery{
+		Select: []SQL{
+			SQLN{Part: "name"},
+			SQLN{Part: "value"},
 		},
 		FromTable: fromTable,
-		FromAlias: sql.SQLN{Part: "t"},
+		FromAlias: SQLN{Part: "t"},
 	}
 
 	rows, err := backend.FetchQuery(ctx, query)
@@ -95,20 +92,20 @@ func testFetchQueryBasic(t *testing.T, ctx context.Context, backend driver.Backe
 	}
 }
 
-func testCountQueryIgnoresPagination(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testCountQueryIgnoresPagination(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: CountQuery ignores LIMIT/OFFSET
-	var fromTable sql.SQL
+	var fromTable SQL
 	if schema != "" {
-		fromTable = sql.SQLQN{Part1: schema, Part2: table}
+		fromTable = SQLQN{Part1: schema, Part2: table}
 	} else {
-		fromTable = sql.SQLN{Part: table}
+		fromTable = SQLN{Part: table}
 	}
 
-	var limitSQL sql.SQL = sql.SQLText{Text: "1"}
-	query := sql.SQLQuery{
-		Select:    []sql.SQL{sql.SQLN{Part: "id"}},
+	var limitSQL SQL = SQLText{Text: "1"}
+	query := SQLQuery{
+		Select:    []SQL{SQLN{Part: "id"}},
 		FromTable: fromTable,
-		FromAlias: sql.SQLN{Part: "t"},
+		FromAlias: SQLN{Part: "t"},
 		Limit:     &limitSQL, // Should be ignored
 	}
 
@@ -123,7 +120,7 @@ func testCountQueryIgnoresPagination(t *testing.T, ctx context.Context, backend 
 }
 
 // testRawSQLContracts tests FetchRaw and ExecRaw operations
-func testRawSQLContracts(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testRawSQLContracts(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	t.Run("FetchRaw_ReturnsRows", func(t *testing.T) {
 		testFetchRawReturnsRows(t, ctx, backend, schema, table)
 	})
@@ -133,7 +130,7 @@ func testRawSQLContracts(t *testing.T, ctx context.Context, backend driver.Backe
 	})
 }
 
-func testFetchRawReturnsRows(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testFetchRawReturnsRows(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: FetchRaw executes raw SQL and returns Rows
 	var sqlText string
 	if schema != "" {
@@ -141,7 +138,7 @@ func testFetchRawReturnsRows(t *testing.T, ctx context.Context, backend driver.B
 	} else {
 		sqlText = "SELECT name, value FROM " + table + " LIMIT 1"
 	}
-	fragment := sql.SQLText{Text: sqlText}
+	fragment := SQLText{Text: sqlText}
 
 	rows, err := backend.FetchRaw(ctx, fragment)
 	if err != nil {
@@ -159,9 +156,9 @@ func testFetchRawReturnsRows(t *testing.T, ctx context.Context, backend driver.B
 	}
 }
 
-func testExecRawReturnsAffectedCount(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testExecRawReturnsAffectedCount(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Insert test data for update
-	insertOp := driver.InsertOp{
+	insertOp := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -185,7 +182,7 @@ func testExecRawReturnsAffectedCount(t *testing.T, ctx context.Context, backend 
 	} else {
 		sqlText = "UPDATE " + table + " SET value = 1000 WHERE name = 'raw_exec_test'"
 	}
-	fragment := sql.SQLText{Text: sqlText}
+	fragment := SQLText{Text: sqlText}
 
 	count, err := backend.ExecRaw(ctx, fragment)
 	if err != nil {
@@ -197,45 +194,45 @@ func testExecRawReturnsAffectedCount(t *testing.T, ctx context.Context, backend 
 	}
 }
 
-func testFetchQueryComplexSQL(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testFetchQueryComplexSQL(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: FetchQuery handles complex SQL AST with all types
 	// This query tests: SQLParam, SQLAll, SQLAny, SQLLt, SQLGt, SQLIsNull, SQLIsNotNull,
 	// SQLFragment, Joins, GroupBy, Having, OrderBy with NULLS, Offset
 
-	var fromTable sql.SQL
+	var fromTable SQL
 	if schema != "" {
-		fromTable = sql.SQLQN{Part1: schema, Part2: table}
+		fromTable = SQLQN{Part1: schema, Part2: table}
 	} else {
-		fromTable = sql.SQLN{Part: table}
+		fromTable = SQLN{Part: table}
 	}
 
 	// WHERE clause: (value > 10 AND value < 100 AND name = 'query_test1') OR (name IS NOT NULL AND id IS NULL)
 	// This tests: SQLParam, SQLAll, SQLAny, SQLGt, SQLLt, SQLEq, SQLIsNull, SQLIsNotNull
-	var whereClause sql.SQL = sql.SQLAny{
-		Els: []sql.SQL{
-			sql.SQLAll{
-				Els: []sql.SQL{
-					sql.SQLGt{
-						Left:  sql.SQLN{Part: "value"},
-						Right: sql.SQLParam{Value: 5},
+	var whereClause SQL = SQLAny{
+		Els: []SQL{
+			SQLAll{
+				Els: []SQL{
+					SQLGt{
+						Left:  SQLN{Part: "value"},
+						Right: SQLParam{Value: 5},
 					},
-					sql.SQLLt{
-						Left:  sql.SQLN{Part: "value"},
-						Right: sql.SQLParam{Value: 100},
+					SQLLt{
+						Left:  SQLN{Part: "value"},
+						Right: SQLParam{Value: 100},
 					},
-					sql.SQLEq{
-						Left:  sql.SQLN{Part: "name"},
-						Right: sql.SQLParam{Value: "query_test1"},
+					SQLEq{
+						Left:  SQLN{Part: "name"},
+						Right: SQLParam{Value: "query_test1"},
 					},
 				},
 			},
-			sql.SQLAll{
-				Els: []sql.SQL{
-					sql.SQLIsNotNull{
-						Operand: sql.SQLN{Part: "name"},
+			SQLAll{
+				Els: []SQL{
+					SQLIsNotNull{
+						Operand: SQLN{Part: "name"},
 					},
-					sql.SQLIsNull{
-						Operand: sql.SQLText{Text: "NULL"}, // Use literal NULL
+					SQLIsNull{
+						Operand: SQLText{Text: "NULL"}, // Use literal NULL
 					},
 				},
 			},
@@ -243,39 +240,39 @@ func testFetchQueryComplexSQL(t *testing.T, ctx context.Context, backend driver.
 	}
 
 	// HAVING clause: COUNT(*) > 0
-	var havingClause sql.SQL = sql.SQLGt{
-		Left: sql.SQLFragment{
-			Els: []sql.SQL{
-				sql.SQLText{Text: "COUNT(*)"},
+	var havingClause SQL = SQLGt{
+		Left: SQLFragment{
+			Els: []SQL{
+				SQLText{Text: "COUNT(*)"},
 			},
 		},
-		Right: sql.SQLParam{Value: 0},
+		Right: SQLParam{Value: 0},
 	}
 
-	var limit sql.SQL = sql.SQLParam{Value: 5}
-	var offset sql.SQL = sql.SQLParam{Value: 1}
+	var limit SQL = SQLParam{Value: 5}
+	var offset SQL = SQLParam{Value: 1}
 
-	query := sql.SQLQuery{
-		Select: []sql.SQL{
-			sql.SQLN{Part: "name"},
-			sql.SQLN{Part: "value"},
+	query := SQLQuery{
+		Select: []SQL{
+			SQLN{Part: "name"},
+			SQLN{Part: "value"},
 		},
 		FromTable: fromTable,
-		FromAlias: sql.SQLN{Part: "t"},
+		FromAlias: SQLN{Part: "t"},
 		Where:     &whereClause,
-		GroupBy: []sql.SQL{
-			sql.SQLN{Part: "name"},
-			sql.SQLN{Part: "value"},
+		GroupBy: []SQL{
+			SQLN{Part: "name"},
+			SQLN{Part: "value"},
 		},
 		Having: &havingClause,
-		OrderBys: []sql.OrderBy{
+		OrderBys: []OrderBy{
 			{
-				Expr:      sql.SQLN{Part: "name"},
+				Expr:      SQLN{Part: "name"},
 				Ascending: true,
 				NullsLast: false, // NULLS FIRST
 			},
 			{
-				Expr:      sql.SQLN{Part: "value"},
+				Expr:      SQLN{Part: "value"},
 				Ascending: false,
 				NullsLast: true, // NULLS LAST
 			},
@@ -308,7 +305,7 @@ func testFetchQueryComplexSQL(t *testing.T, ctx context.Context, backend driver.
 	}
 }
 
-func testCountQueryInTransaction(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testCountQueryInTransaction(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: CountQuery works within transactions
 	err := backend.Begin(ctx)
 	if err != nil {
@@ -316,17 +313,17 @@ func testCountQueryInTransaction(t *testing.T, ctx context.Context, backend driv
 	}
 	defer backend.Rollback(ctx)
 
-	var fromTable sql.SQL
+	var fromTable SQL
 	if schema != "" {
-		fromTable = sql.SQLQN{Part1: schema, Part2: table}
+		fromTable = SQLQN{Part1: schema, Part2: table}
 	} else {
-		fromTable = sql.SQLN{Part: table}
+		fromTable = SQLN{Part: table}
 	}
 
-	query := sql.SQLQuery{
-		Select:    []sql.SQL{sql.SQLN{Part: "id"}},
+	query := SQLQuery{
+		Select:    []SQL{SQLN{Part: "id"}},
 		FromTable: fromTable,
-		FromAlias: sql.SQLN{Part: "t"},
+		FromAlias: SQLN{Part: "t"},
 	}
 
 	count, err := backend.CountQuery(ctx, query)
@@ -339,10 +336,10 @@ func testCountQueryInTransaction(t *testing.T, ctx context.Context, backend driv
 	}
 }
 
-func testFetchQueryWithJoins(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testFetchQueryWithJoins(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: FetchQuery handles JOIN clauses
 	// Insert additional test data
-	insertOp := driver.InsertOp{
+	insertOp := InsertOp{
 		IntoSchema: schema,
 		IntoTable:  table,
 		Insert:     []string{"name", "value"},
@@ -355,28 +352,28 @@ func testFetchQueryWithJoins(t *testing.T, ctx context.Context, backend driver.B
 	}
 	rows.Close()
 
-	var fromTable sql.SQL
+	var fromTable SQL
 	if schema != "" {
-		fromTable = sql.SQLQN{Part1: schema, Part2: table}
+		fromTable = SQLQN{Part1: schema, Part2: table}
 	} else {
-		fromTable = sql.SQLN{Part: table}
+		fromTable = SQLN{Part: table}
 	}
 
 	// Create a self-join query
-	query := sql.SQLQuery{
-		Select: []sql.SQL{
-			sql.SQLFragment{Els: []sql.SQL{sql.SQLN{Part: "t1"}, sql.SQLText{Text: "."}, sql.SQLN{Part: "name"}}},
+	query := SQLQuery{
+		Select: []SQL{
+			SQLFragment{Els: []SQL{SQLN{Part: "t1"}, SQLText{Text: "."}, SQLN{Part: "name"}}},
 		},
 		FromTable: fromTable,
-		FromAlias: sql.SQLN{Part: "t1"},
-		Joins: []sql.Join{
+		FromAlias: SQLN{Part: "t1"},
+		Joins: []Join{
 			{
 				Type:  "INNER JOIN",
 				Table: fromTable,
-				Alias: sql.SQLN{Part: "t2"},
-				On: sql.SQLEq{
-					Left:  sql.SQLFragment{Els: []sql.SQL{sql.SQLN{Part: "t1"}, sql.SQLText{Text: "."}, sql.SQLN{Part: "value"}}},
-					Right: sql.SQLFragment{Els: []sql.SQL{sql.SQLN{Part: "t2"}, sql.SQLText{Text: "."}, sql.SQLN{Part: "value"}}},
+				Alias: SQLN{Part: "t2"},
+				On: SQLEq{
+					Left:  SQLFragment{Els: []SQL{SQLN{Part: "t1"}, SQLText{Text: "."}, SQLN{Part: "value"}}},
+					Right: SQLFragment{Els: []SQL{SQLN{Part: "t2"}, SQLText{Text: "."}, SQLN{Part: "value"}}},
 				},
 			},
 		},
@@ -397,25 +394,25 @@ func testFetchQueryWithJoins(t *testing.T, ctx context.Context, backend driver.B
 	}
 }
 
-func testFetchQueryQuotedIdentifiers(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testFetchQueryQuotedIdentifiers(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: FetchQuery handles identifiers with special characters (like double quotes)
 	// This tests quoteIdentifier's quote escaping logic
-	var fromTable sql.SQL
+	var fromTable SQL
 	if schema != "" {
-		fromTable = sql.SQLQN{Part1: schema, Part2: table}
+		fromTable = SQLQN{Part1: schema, Part2: table}
 	} else {
-		fromTable = sql.SQLN{Part: table}
+		fromTable = SQLN{Part: table}
 	}
 
 	// Use a column name that would contain quotes if it existed
 	// This tests the SQLQN with empty Part1 branch as well
-	query := sql.SQLQuery{
-		Select: []sql.SQL{
-			sql.SQLQN{Part1: "", Part2: "name"},  // Qualified name without schema
-			sql.SQLN{Part: `value`},
+	query := SQLQuery{
+		Select: []SQL{
+			SQLQN{Part1: "", Part2: "name"}, // Qualified name without schema
+			SQLN{Part: `value`},
 		},
 		FromTable: fromTable,
-		FromAlias: sql.SQLN{Part: "t"},
+		FromAlias: SQLN{Part: "t"},
 	}
 
 	rows, err := backend.FetchQuery(ctx, query)
@@ -434,30 +431,30 @@ func testFetchQueryQuotedIdentifiers(t *testing.T, ctx context.Context, backend 
 	}
 }
 
-func testFetchQueryCompleteOrderBy(t *testing.T, ctx context.Context, backend driver.Backend, schema, table string) {
+func testFetchQueryCompleteOrderBy(t *testing.T, ctx context.Context, backend Backend, schema, table string) {
 	// Contract: FetchQuery handles all ORDER BY variations (ASC NULLS FIRST, DESC NULLS LAST)
-	var fromTable sql.SQL
+	var fromTable SQL
 	if schema != "" {
-		fromTable = sql.SQLQN{Part1: schema, Part2: table}
+		fromTable = SQLQN{Part1: schema, Part2: table}
 	} else {
-		fromTable = sql.SQLN{Part: table}
+		fromTable = SQLN{Part: table}
 	}
 
-	query := sql.SQLQuery{
-		Select: []sql.SQL{
-			sql.SQLN{Part: "name"},
-			sql.SQLN{Part: "value"},
+	query := SQLQuery{
+		Select: []SQL{
+			SQLN{Part: "name"},
+			SQLN{Part: "value"},
 		},
 		FromTable: fromTable,
-		FromAlias: sql.SQLN{Part: "t"},
-		OrderBys: []sql.OrderBy{
+		FromAlias: SQLN{Part: "t"},
+		OrderBys: []OrderBy{
 			{
-				Expr:      sql.SQLN{Part: "name"},
+				Expr:      SQLN{Part: "name"},
 				Ascending: true,
 				NullsLast: true, // ASC NULLS LAST (default for PostgreSQL, so won't render NULLS clause)
 			},
 			{
-				Expr:      sql.SQLN{Part: "value"},
+				Expr:      SQLN{Part: "value"},
 				Ascending: false,
 				NullsLast: false, // DESC NULLS FIRST (default for PostgreSQL, so won't render NULLS clause)
 			},

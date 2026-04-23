@@ -1,3 +1,6 @@
+//go:build e2e
+// +build e2e
+
 package orm1_test
 
 import (
@@ -6,26 +9,25 @@ import (
 	"testing"
 
 	"github.com/hanpama/orm1"
-	"github.com/hanpama/orm1/driver"
 )
 
 // RawUser - basic struct for E2E testing
 type RawUser struct {
 	ID        int64
 	Name      string
-	Email     *string    // Nullable field
-	Ignored   string     `orm1:"-"`          // Should be ignored
-	CustomCol string     `orm1:"column:alt"` // Custom column name
-	Child     *RawUser   `orm1:"child"`      // Should be skipped (child tag)
-	Slice     []string   // Should be skipped (slice)
-	Pointer   *RawUser   // Should be skipped (struct pointer)
+	Email     *string  // Nullable field
+	Ignored   string   `orm1:"-"`          // Should be ignored
+	CustomCol string   `orm1:"column:alt"` // Custom column name
+	Child     *RawUser `orm1:"child"`      // Should be skipped (child tag)
+	Slice     []string // Should be skipped (slice)
+	Pointer   *RawUser // Should be skipped (struct pointer)
 }
 
 // TestRawQuery_ScanOne tests single-row scanning with all field mapping features
 func TestRawQuery_ScanOne(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -95,7 +97,7 @@ func TestRawQuery_ScanOne(t *testing.T) {
 func TestRawQuery_ScanOne_Empty(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},
@@ -151,7 +153,7 @@ func TestRawQuery_ScanOne_Validation(t *testing.T) {
 func TestRawQuery_ScanAll(t *testing.T) {
 	for _, drv := range []struct {
 		name   string
-		driver driver.Driver
+		driver orm1.Driver
 	}{
 		{"sqlite", sqliteDriver},
 		{"postgres", postgresDriver},

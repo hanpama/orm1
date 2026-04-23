@@ -4,20 +4,17 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-
-	"github.com/hanpama/orm1/mapping"
-	"github.com/hanpama/orm1/sql"
 )
 
 // RawQuery represents a raw SQL query with parameter interpolation.
 type RawQuery struct {
 	session  *Session
-	fragment sql.SQL
+	fragment SQL
 }
 
 // NewRawQuery creates a new raw query with the given SQL and parameters.
 func NewRawQuery(session *Session, query string, params ...any) *RawQuery {
-	fragment := sql.ParseSQL(query, params...)
+	fragment := ParseSQL(query, params...)
 
 	return &RawQuery{
 		session:  session,
@@ -141,7 +138,7 @@ func (r *RawQuery) prepareScanMetadata(rows Rows, structType reflect.Type) ([]st
 		return nil, nil, nil, fmt.Errorf("prepareScanMetadata: failed to get columns: %w", err)
 	}
 
-	fieldsMetadata := mapping.AnalyzeStruct(structType)
+	fieldsMetadata := AnalyzeStruct(structType)
 	fieldMap := make(map[string]fieldInfo, len(fieldsMetadata))
 
 	for _, metadata := range fieldsMetadata {
@@ -203,7 +200,7 @@ func (r *RawQuery) scanStructWithMetadata(dest any, rows Rows, columns []string,
 	return rows.Scan(scanDest...)
 }
 
-// scanStruct scans a row into a struct pointer using column-based mapping.
+// scanStruct scans a row into a struct pointer using column-based
 // This is used by ScanOne for single-row queries.
 func (r *RawQuery) scanStruct(dest any, rows Rows) error {
 	destVal := reflect.ValueOf(dest)
@@ -222,7 +219,7 @@ func (r *RawQuery) scanStruct(dest any, rows Rows) error {
 		return fmt.Errorf("scanStruct: failed to get columns: %w", err)
 	}
 
-	fieldsMetadata := mapping.AnalyzeStruct(structType)
+	fieldsMetadata := AnalyzeStruct(structType)
 	fieldMap := make(map[string]fieldInfo)
 
 	for _, metadata := range fieldsMetadata {

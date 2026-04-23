@@ -2,15 +2,13 @@ package orm1
 
 import (
 	"reflect"
-
-	"github.com/hanpama/orm1/mapping"
 )
 
 // SessionFactory builds entity mappings and creates sessions.
 // It builds EntityMapping instances from Registry metadata at creation time
 // and reuses them for all sessions.
 type SessionFactory struct {
-	mappings map[reflect.Type]*mapping.EntityMapping
+	mappings map[reflect.Type]*EntityMapping
 	driver   Driver
 }
 
@@ -30,7 +28,7 @@ type SessionFactory struct {
 //	session := factory.CreateSession()
 func NewSessionFactory(registry *Registry, driver Driver) *SessionFactory {
 	// Build entity mappings at factory creation time
-	mappings := mapping.BuildEntityMappings(
+	mappings := BuildEntityMappings(
 		registry.GetMetadata(),
 		registry.GetRegistered(),
 	)

@@ -1,10 +1,9 @@
-package driver_test
+package orm1
 
 import (
 	"database/sql"
 	"testing"
 
-	"github.com/hanpama/orm1/driver"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -37,7 +36,7 @@ func TestSQLite(t *testing.T) {
 	}
 
 	// Create driver
-	drv := driver.NewSQLite(db)
+	drv := NewSQLite(db)
 	defer drv.Close()
 
 	// Run all driver contracts
